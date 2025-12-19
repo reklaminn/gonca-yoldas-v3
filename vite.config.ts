@@ -13,25 +13,18 @@ export default defineConfig({
     port: 3000,
   },
   build: {
-    chunkSizeWarningLimit: 1000, // Uyarı limitini 1000kB'a çıkarır
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // node_modules içindeki kütüphaneleri ayrı bir 'vendor' dosyasına böler
           if (id.includes('node_modules')) {
             if (id.includes('lucide-react')) return 'icons';
             if (id.includes('recharts')) return 'charts';
-            if (id.includes('@supabase')) return 'supabase';
+            // Supabase'i buradan çıkardık, vendor içinde kalsın
             return 'vendor';
           }
         },
       },
     },
-  },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: './src/test/setup.ts',
-    css: true,
   },
 });
