@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Settings as SettingsIcon,
   Save,
@@ -15,22 +16,36 @@ import {
   FileText,
   Shield,
   Bell,
-  Loader2
+  Loader2,
+  Server,
+  Lock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 
 const AdminSettings: React.FC = () => {
   const [loading, setLoading] = useState(false);
-  const [settings, setSettings] = useState({
+  const [showPassword, setShowPassword] = useState(false);
+  
+  const [generalSettings, setGeneralSettings] = useState({
     site_name: 'Gonca Yoldaş',
     site_email: 'info@goncayoldas.com',
     site_phone: '+90 532 123 45 67',
     site_address: 'İstanbul, Türkiye',
     invoice_enabled: true,
     email_notifications: true,
-    sms_notifications: false,
     maintenance_mode: false,
+  });
+
+  const [smtpSettings, setSmtpSettings] = useState({
+    host: '',
+    port: 587,
+    user_email: '',
+    password: '',
+    from_name: '',
+    encryption: 'tls'
   });
 
   useEffect(() => {
@@ -39,42 +54,73 @@ const AdminSettings: React.FC = () => {
 
   const fetchSettings = async () => {
     try {
-      const { data, error } = await supabase
+      setLoading(true);
+      
+      // Fetch General Settings
+      const { data: genData } = await supabase
         .from('general_settings')
         .select('*')
         .single();
+      
+      if (genData) setGeneralSettings(prev => ({ ...prev, ...genData }));
 
-      if (error && error.code !== 'PGRST116') throw error;
-      if (data) {
-        setSettings(prev => ({ ...prev, ...data }));
-      }
+      // Fetch SMTP Settings
+      const { data: smtpData } = await supabase
+        .from('smtp_settings')
+        .select('*')
+        .single();
+      
+      if (smtpData) setSmtpSettings(smtpData);
+
     } catch (error) {
       console.error('Error fetching settings:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleSave = async () => {
     try {
       setLoading(true);
-      const { error } = await supabase
-        .from('general_settings')
-        .upsert(settings);
 
-      if (error) throw error;
-      toast.success('Ayarlar başarıyla kaydedildi');
-    } catch (error) {
+      // Save General Settings
+      const { error: genError } = await supabase
+        .from('general_settings')
+        .upsert(generalSettings);
+
+      if (genError) throw genError;
+
+      // Save SMTP Settings
+      const { error: smtpError } = await supabase
+        .from('smtp_settings')
+        .upsert(smtpSettings);
+
+      if (smtpError) throw smtpError;
+
+      toast.success('Tüm ayarlar başarıyla kaydedildi');
+    } catch (error: any) {
       console.error('Error saving settings:', error);
-      toast.error('Ayarlar kaydedilirken hata oluştu');
+      toast.error('Ayarlar kaydedilirken hata oluştu: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-[var(--fg)]">Sistem Ayarları</h1>
-        <p className="text-[var(--fg-muted)] mt-2">Genel sistem ayarlarını yönetin</p>
+    <div className="space-y-8 pb-20">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-[var(--fg)]">Sistem Ayarları</h1>
+          <p className="text-[var(--fg-muted)] mt-2">Site genel ayarları ve e-posta yapılandırması</p>
+        </div>
+        <Button 
+          onClick={handleSave} 
+          disabled={loading}
+          className="bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90"
+        >
+          {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+          Değişiklikleri Kaydet
+        </Button>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -82,156 +128,174 @@ const AdminSettings: React.FC = () => {
         <Card className="border-[var(--border)] bg-[var(--bg-card)]">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-[var(--fg)]">
-              <Globe className="h-5 w-5" />
+              <Globe className="h-5 w-5 text-[var(--color-primary)]" />
               Site Bilgileri
             </CardTitle>
-            <CardDescription className="text-[var(--fg-muted)]">Temel site bilgilerini düzenleyin</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="site_name">Site Adı</Label>
+              <Label>Site Adı</Label>
               <Input
-                id="site_name"
-                value={settings.site_name}
-                onChange={(e) => setSettings({ ...settings, site_name: e.target.value })}
-                className="bg-[var(--bg-input)] text-[var(--fg)] border-[var(--border)]"
+                value={generalSettings.site_name}
+                onChange={(e) => setGeneralSettings({ ...generalSettings, site_name: e.target.value })}
+                className="bg-[var(--bg-input)] border-[var(--border)]"
               />
             </div>
-
             <div className="space-y-2">
-              <Label htmlFor="site_email" className="flex items-center gap-2">
-                <Mail className="h-4 w-4" />
-                E-posta
-              </Label>
+              <Label>İletişim E-postası</Label>
               <Input
-                id="site_email"
                 type="email"
-                value={settings.site_email}
-                onChange={(e) => setSettings({ ...settings, site_email: e.target.value })}
-                className="bg-[var(--bg-input)] text-[var(--fg)] border-[var(--border)]"
+                value={generalSettings.site_email}
+                onChange={(e) => setGeneralSettings({ ...generalSettings, site_email: e.target.value })}
+                className="bg-[var(--bg-input)] border-[var(--border)]"
               />
             </div>
-
             <div className="space-y-2">
-              <Label htmlFor="site_phone" className="flex items-center gap-2">
-                <Phone className="h-4 w-4" />
-                Telefon
-              </Label>
+              <Label>Telefon</Label>
               <Input
-                id="site_phone"
-                value={settings.site_phone}
-                onChange={(e) => setSettings({ ...settings, site_phone: e.target.value })}
-                className="bg-[var(--bg-input)] text-[var(--fg)] border-[var(--border)]"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="site_address" className="flex items-center gap-2">
-                <MapPin className="h-4 w-4" />
-                Adres
-              </Label>
-              <Input
-                id="site_address"
-                value={settings.site_address}
-                onChange={(e) => setSettings({ ...settings, site_address: e.target.value })}
-                className="bg-[var(--bg-input)] text-[var(--fg)] border-[var(--border)]"
+                value={generalSettings.site_phone}
+                onChange={(e) => setGeneralSettings({ ...generalSettings, site_phone: e.target.value })}
+                className="bg-[var(--bg-input)] border-[var(--border)]"
               />
             </div>
           </CardContent>
         </Card>
 
-        {/* Features */}
+        {/* SMTP Settings */}
         <Card className="border-[var(--border)] bg-[var(--bg-card)]">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-[var(--fg)]">
-              <FileText className="h-5 w-5" />
-              Özellikler
+              <Server className="h-5 w-5 text-[var(--color-primary)]" />
+              SMTP E-posta Ayarları
             </CardTitle>
-            <CardDescription className="text-[var(--fg-muted)]">Sistem özelliklerini yönetin</CardDescription>
+            <CardDescription>İletişim formunun mail gönderebilmesi için gereklidir</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="invoice_enabled">Fatura Sistemi</Label>
-                <p className="text-sm text-[var(--fg-muted)]">Sipariş faturalarını etkinleştir</p>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="col-span-2 space-y-2">
+                <Label>SMTP Host</Label>
+                <Input
+                  placeholder="smtp.gmail.com"
+                  value={smtpSettings.host}
+                  onChange={(e) => setSmtpSettings({ ...smtpSettings, host: e.target.value })}
+                  className="bg-[var(--bg-input)] border-[var(--border)]"
+                />
               </div>
-              <Switch
-                id="invoice_enabled"
-                checked={settings.invoice_enabled}
-                onCheckedChange={(checked) => setSettings({ ...settings, invoice_enabled: checked })}
+              <div className="space-y-2">
+                <Label>Port</Label>
+                <Input
+                  type="number"
+                  placeholder="587"
+                  value={smtpSettings.port}
+                  onChange={(e) => setSmtpSettings({ ...smtpSettings, port: parseInt(e.target.value) })}
+                  className="bg-[var(--bg-input)] border-[var(--border)]"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>E-posta / Kullanıcı Adı</Label>
+              <Input
+                type="email"
+                placeholder="ornek@gmail.com"
+                value={smtpSettings.user_email}
+                onChange={(e) => setSmtpSettings({ ...smtpSettings, user_email: e.target.value })}
+                className="bg-[var(--bg-input)] border-[var(--border)]"
               />
             </div>
 
-            <Separator className="bg-[var(--border)]" />
+            <div className="space-y-2">
+              <Label>Şifre / Uygulama Şifresi</Label>
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  value={smtpSettings.password}
+                  onChange={(e) => setSmtpSettings({ ...smtpSettings, password: e.target.value })}
+                  className="bg-[var(--bg-input)] border-[var(--border)] pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
 
-            <div className="flex items-center justify-between">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Gönderen Adı</Label>
+                <Input
+                  placeholder="Gonca Yoldaş"
+                  value={smtpSettings.from_name}
+                  onChange={(e) => setSmtpSettings({ ...smtpSettings, from_name: e.target.value })}
+                  className="bg-[var(--bg-input)] border-[var(--border)]"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Şifreleme</Label>
+                <Select 
+                  value={smtpSettings.encryption} 
+                  onValueChange={(val) => setSmtpSettings({ ...smtpSettings, encryption: val })}
+                >
+                  <SelectTrigger className="bg-[var(--bg-input)] border-[var(--border)]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="tls">TLS (Önerilen)</SelectItem>
+                    <SelectItem value="ssl">SSL</SelectItem>
+                    <SelectItem value="none">Yok</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* System Features */}
+        <Card className="border-[var(--border)] bg-[var(--bg-card)] lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-[var(--fg)]">
+              <Shield className="h-5 w-5 text-[var(--color-primary)]" />
+              Sistem Durumu
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid md:grid-cols-3 gap-6">
+            <div className="flex items-center justify-between p-4 rounded-lg border border-[var(--border)] bg-[var(--bg)]">
               <div className="space-y-0.5">
-                <Label htmlFor="email_notifications" className="flex items-center gap-2">
-                  <Bell className="h-4 w-4" />
-                  E-posta Bildirimleri
-                </Label>
-                <p className="text-sm text-[var(--fg-muted)]">Otomatik e-posta gönderimi</p>
+                <Label>E-posta Bildirimleri</Label>
+                <p className="text-xs text-[var(--fg-muted)]">Form sonrası mail gönderimi</p>
               </div>
               <Switch
-                id="email_notifications"
-                checked={settings.email_notifications}
-                onCheckedChange={(checked) => setSettings({ ...settings, email_notifications: checked })}
+                checked={generalSettings.email_notifications}
+                onCheckedChange={(checked) => setGeneralSettings({ ...generalSettings, email_notifications: checked })}
               />
             </div>
 
-            <Separator className="bg-[var(--border)]" />
-
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between p-4 rounded-lg border border-[var(--border)] bg-[var(--bg)]">
               <div className="space-y-0.5">
-                <Label htmlFor="sms_notifications">SMS Bildirimleri</Label>
-                <p className="text-sm text-[var(--fg-muted)]">SMS ile bildirim gönder</p>
+                <Label>Fatura Sistemi</Label>
+                <p className="text-xs text-[var(--fg-muted)]">Otomatik fatura oluşturma</p>
               </div>
               <Switch
-                id="sms_notifications"
-                checked={settings.sms_notifications}
-                onCheckedChange={(checked) => setSettings({ ...settings, sms_notifications: checked })}
+                checked={generalSettings.invoice_enabled}
+                onCheckedChange={(checked) => setGeneralSettings({ ...generalSettings, invoice_enabled: checked })}
               />
             </div>
 
-            <Separator className="bg-[var(--border)]" />
-
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between p-4 rounded-lg border border-[var(--border)] bg-[var(--bg)]">
               <div className="space-y-0.5">
-                <Label htmlFor="maintenance_mode" className="flex items-center gap-2">
-                  <Shield className="h-4 w-4" />
-                  Bakım Modu
-                </Label>
-                <p className="text-sm text-[var(--fg-muted)]">Siteyi bakım moduna al</p>
+                <Label className="text-red-500">Bakım Modu</Label>
+                <p className="text-xs text-[var(--fg-muted)]">Siteyi ziyaretçilere kapat</p>
               </div>
               <Switch
-                id="maintenance_mode"
-                checked={settings.maintenance_mode}
-                onCheckedChange={(checked) => setSettings({ ...settings, maintenance_mode: checked })}
+                checked={generalSettings.maintenance_mode}
+                onCheckedChange={(checked) => setGeneralSettings({ ...generalSettings, maintenance_mode: checked })}
               />
             </div>
           </CardContent>
         </Card>
-      </div>
-
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <Button 
-          onClick={handleSave} 
-          disabled={loading}
-          className="bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Kaydediliyor...
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4 mr-2" />
-              Ayarları Kaydet
-            </>
-          )}
-        </Button>
       </div>
     </div>
   );

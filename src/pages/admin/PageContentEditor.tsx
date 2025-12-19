@@ -42,9 +42,10 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ImagePicker } from '@/components/admin/ImagePicker';
-import { JsonListEditor } from '@/components/admin/JsonListEditor'; // Import JsonListEditor
+import { JsonListEditor } from '@/components/admin/JsonListEditor';
 
 const PAGE_TITLES: Record<string, string> = {
+  'global': 'Genel Ayarlar',
   'home': 'Anasayfa',
   'about': 'Hakkımızda',
   'contact': 'İletişim',
@@ -104,7 +105,6 @@ const SortableSectionCard: React.FC<SectionCardProps> = ({
     setIsEditing(false);
   };
 
-  // Helper to render preview of content
   const renderPreview = () => {
     if (!localValue) return <p className="text-sm text-gray-400 italic">İçerik girilmemiş</p>;
 
@@ -207,7 +207,7 @@ const SortableSectionCard: React.FC<SectionCardProps> = ({
         <CardContent>
           {isEditing ? (
             <div className="space-y-3">
-              {item.content_type === 'text' && item.section_key.includes('description') ? (
+              {item.content_type === 'text' && (item.section_key.includes('description') || item.section_key.includes('text')) ? (
                 <Textarea
                   value={localValue}
                   onChange={(e) => setLocalValue(e.target.value)}

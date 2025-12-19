@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { BookOpen, Users, Award, TrendingUp, ArrowRight, Loader2, Star } from 'lucide-react';
+import { BookOpen, Users, Award, TrendingUp, ArrowRight, Loader2, Star, Calendar } from 'lucide-react';
 import { usePrograms } from '@/hooks/usePrograms';
 import { useTestimonials } from '@/hooks/useTestimonials';
 import SEO from '@/components/SEO';
@@ -92,7 +92,7 @@ const Home: React.FC = () => {
       <div className="bg-[var(--bg)]">
         {/* Hero Section */}
         {(content.hero_title || content.hero_description) && (
-          <section className="relative overflow-hidden py-20 lg:py-32">
+          <section className="relative overflow-hidden py-12 lg:py-32">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="grid lg:grid-cols-2 gap-12 items-center">
                 <motion.div
@@ -100,30 +100,46 @@ const Home: React.FC = () => {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.6 }}
                 >
-                  {content.hero_title && (
-                    <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-[var(--fg)] mb-6">
-                      {content.hero_title}{' '}
-                      <span 
-                        className="bg-gradient-primary bg-clip-text text-transparent" 
-                        style={{ 
-                          backgroundClip: 'text',
-                          WebkitBackgroundClip: 'text',
-                          WebkitTextFillColor: 'transparent'
-                        }}
-                      >
-                        {content.hero_subtitle}
-                      </span>
-                    </h1>
-                  )}
+                  {/* Responsive Header Layout */}
+                  <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6 mb-8">
+                    <div className="flex-1 min-w-0 text-center sm:text-left">
+                      {content.hero_title && (
+                        <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-[var(--fg)]">
+                          {content.hero_title}{' '}
+                          <span 
+                            className="bg-gradient-primary bg-clip-text text-transparent" 
+                            style={{ 
+                              backgroundClip: 'text',
+                              WebkitBackgroundClip: 'text',
+                              WebkitTextFillColor: 'transparent'
+                            }}
+                          >
+                            {content.hero_subtitle}
+                          </span>
+                        </h1>
+                      )}
+                    </div>
+
+                    {/* Mobile/Tablet Circular Image - Fixed Visibility */}
+                    <div className="lg:hidden flex-shrink-0">
+                      <div className="w-40 h-40 md:w-56 md:h-56 rounded-full p-1 bg-gradient-primary overflow-hidden shadow-soft-lg">
+                        <img
+                          src={content.hero_image || "https://images.pexels.com/photos/8535214/pexels-photo-8535214.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1"}
+                          alt="Hero Mobile"
+                          className="w-full h-full object-cover rounded-full"
+                        />
+                      </div>
+                    </div>
+                  </div>
                   
                   {content.hero_description && (
-                    <p className="text-lg md:text-xl text-[var(--fg-muted)] mb-8">
+                    <p className="text-lg md:text-xl text-[var(--fg-muted)] mb-8 text-center sm:text-left">
                       {content.hero_description}
                     </p>
                   )}
 
                   {/* Age Filter Buttons */}
-                  <div className="flex flex-wrap gap-3 mb-8">
+                  <div className="flex flex-wrap justify-center sm:justify-start gap-3 mb-8">
                     {ageGroups.map((group) => (
                       <Button
                         key={group.value}
@@ -135,20 +151,22 @@ const Home: React.FC = () => {
                     ))}
                   </div>
 
-                  <Button
-                    onClick={() => navigate('/programs')}
-                    className="bg-gradient-primary text-white font-poppins font-semibold hover:shadow-soft-lg transition-all duration-200 hover:scale-105 rounded-lg text-lg px-8 py-6"
-                  >
-                    Programları Keşfet
-                    <ArrowRight className="ml-2 h-5 w-5" />
-                  </Button>
+                  <div className="flex justify-center sm:justify-start">
+                    <Button
+                      onClick={() => navigate('/programs')}
+                      className="bg-gradient-primary text-white font-poppins font-semibold hover:shadow-soft-lg transition-all duration-200 hover:scale-105 rounded-lg text-lg px-8 py-6"
+                    >
+                      Programları Keşfet
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </Button>
+                  </div>
                 </motion.div>
 
                 <motion.div
                   initial={{ opacity: 0, x: 50 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.6, delay: 0.2 }}
-                  className="relative"
+                  className="relative hidden lg:block"
                 >
                   <div className="aspect-square rounded-2xl bg-gradient-primary p-1">
                     <div className="w-full h-full rounded-xl bg-[var(--bg-card)] flex items-center justify-center overflow-hidden">
@@ -226,8 +244,13 @@ const Home: React.FC = () => {
                       </CardHeader>
                       <CardContent className="mt-auto">
                         <div className="space-y-2 mb-4 text-sm" style={{ color: 'var(--fg-muted)' }}>
-                          <p>📅 {program.schedule}</p>
-                          <p>💰 ₺{program.price.toLocaleString('tr-TR')}</p>
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-[var(--color-primary)]" />
+                            <span>{program.schedule}</span>
+                          </div>
+                          <div className="font-bold text-[var(--fg)] text-lg">
+                            ₺{program.price.toLocaleString('tr-TR')}
+                          </div>
                         </div>
                         <Button
                           onClick={() => navigate(`/programs/${program.slug}`)}

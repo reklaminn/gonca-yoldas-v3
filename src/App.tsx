@@ -3,13 +3,14 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from '@/components/ui/sonner';
 import { useAuthStore } from './store/authStore';
 import { supabase } from './lib/supabaseClient';
+import { Loader2 } from 'lucide-react'; // Eksik olan import eklendi
 
 // Layouts
 import MarketingLayout from './layouts/MarketingLayout';
 import DashboardLayout from './layouts/DashboardLayout';
 import AdminLayout from './layouts/AdminLayout';
 
-// Marketing Pages (Lazy)
+// Marketing Pages
 const Home = React.lazy(() => import('./pages/marketing/Home'));
 const About = React.lazy(() => import('./pages/marketing/About'));
 const Programs = React.lazy(() => import('./pages/marketing/Programs'));
@@ -21,13 +22,13 @@ const Checkout = React.lazy(() => import('./pages/marketing/Checkout'));
 const PaymentSuccess = React.lazy(() => import('./pages/marketing/PaymentSuccess'));
 const PaymentFailure = React.lazy(() => import('./pages/marketing/PaymentFailure'));
 
-// Auth Pages (Lazy)
+// Auth Pages
 const Login = React.lazy(() => import('./pages/auth/Login'));
 const Signup = React.lazy(() => import('./pages/auth/SignUp'));
 const ForgotPassword = React.lazy(() => import('./pages/auth/ForgotPassword'));
 const ResetPassword = React.lazy(() => import('./pages/auth/ResetPassword'));
 
-// Student Dashboard Pages (Lazy)
+// Student Dashboard
 const Dashboard = React.lazy(() => import('./pages/student/Dashboard'));
 const MyPrograms = React.lazy(() => import('./pages/student/MyPrograms'));
 const Schedule = React.lazy(() => import('./pages/student/Schedule'));
@@ -39,8 +40,9 @@ const OrderDetails = React.lazy(() => import('./pages/student/OrderDetails'));
 const StudentSettings = React.lazy(() => import('./pages/student/Settings'));
 const Profile = React.lazy(() => import('./pages/student/Profile'));
 
-// Admin Pages (Lazy)
+// Admin Pages
 const AdminDashboard = React.lazy(() => import('./pages/admin/AdminDashboard'));
+const AdminMessages = React.lazy(() => import('./pages/admin/AdminMessages'));
 const AdminPrograms = React.lazy(() => import('./pages/admin/AdminPrograms'));
 const ProgramForm = React.lazy(() => import('./pages/admin/ProgramForm'));
 const AdminStudents = React.lazy(() => import('./pages/admin/AdminStudents'));
@@ -51,64 +53,28 @@ const ContentManagement = React.lazy(() => import('./pages/admin/ContentManageme
 const PageContentEditor = React.lazy(() => import('./pages/admin/PageContentEditor'));
 const TestimonialsManagement = React.lazy(() => import('./pages/admin/TestimonialsManagement'));
 
-// Protected Route Component
-const ProtectedRoute: React.FC<{ children: React.ReactNode; adminOnly?: boolean }> = ({ 
-  children, 
-  adminOnly = false 
-}) => {
+const ProtectedRoute: React.FC<{ children: React.ReactNode; adminOnly?: boolean }> = ({ children, adminOnly = false }) => {
   const { user, profile, loading } = useAuthStore();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Navigate to="/auth/login" replace />;
-  }
-
-  if (adminOnly && profile?.role !== 'admin') {
-    return <Navigate to="/dashboard" replace />;
-  }
-
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-12 w-12 animate-spin text-blue-600" /></div>;
+  if (!user) return <Navigate to="/auth/login" replace />;
+  if (adminOnly && profile?.role !== 'admin') return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 };
-
-// Loading Fallback
-const LoadingFallback = () => (
-  <div className="min-h-screen flex items-center justify-center">
-    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-  </div>
-);
 
 function App() {
   const { setUser, setProfile, setLoading } = useAuthStore();
 
   useEffect(() => {
-    // Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      } else {
-        setLoading(false);
-      }
+      if (session?.user) fetchProfile(session.user.id);
+      else setLoading(false);
     });
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      } else {
-        setProfile(null);
-        setLoading(false);
-      }
+      if (session?.user) fetchProfile(session.user.id);
+      else { setProfile(null); setLoading(false); }
     });
 
     return () => subscription.unsubscribe();
@@ -116,16 +82,10 @@ function App() {
 
   const fetchProfile = async (userId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
       if (error) throw error;
       setProfile(data);
     } catch (error) {
-      console.error('Error fetching profile:', error);
       setProfile(null);
     } finally {
       setLoading(false);
@@ -135,9 +95,8 @@ function App() {
   return (
     <>
       <Router>
-        <Suspense fallback={<LoadingFallback />}>
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-12 w-12 animate-spin text-blue-600" /></div>}>
           <Routes>
-            {/* Marketing Routes */}
             <Route element={<MarketingLayout />}>
               <Route path="/" element={<Home />} />
               <Route path="/about" element={<About />} />
@@ -149,25 +108,14 @@ function App() {
               <Route path="/siparis" element={<Checkout />} />
             </Route>
 
-            {/* Payment Callback Routes */}
             <Route path="/odeme-basarili" element={<PaymentSuccess />} />
             <Route path="/odeme-basarisiz" element={<PaymentFailure />} />
-
-            {/* Auth Routes */}
             <Route path="/auth/login" element={<Login />} />
             <Route path="/auth/signup" element={<Signup />} />
             <Route path="/auth/forgot-password" element={<ForgotPassword />} />
             <Route path="/auth/reset-password" element={<ResetPassword />} />
 
-            {/* Student Dashboard Routes */}
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute>
-                  <DashboardLayout />
-                </ProtectedRoute>
-              }
-            >
+            <Route path="/dashboard" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
               <Route index element={<Dashboard />} />
               <Route path="programs" element={<MyPrograms />} />
               <Route path="schedule" element={<Schedule />} />
@@ -180,16 +128,9 @@ function App() {
               <Route path="profile" element={<Profile />} />
             </Route>
 
-            {/* Admin Routes */}
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute adminOnly>
-                  <AdminLayout />
-                </ProtectedRoute>
-              }
-            >
+            <Route path="/admin" element={<ProtectedRoute adminOnly><AdminLayout /></ProtectedRoute>}>
               <Route index element={<AdminDashboard />} />
+              <Route path="messages" element={<AdminMessages />} />
               <Route path="students" element={<AdminStudents />} />
               <Route path="roles" element={<AdminRoles />} />
               <Route path="programs" element={<AdminPrograms />} />
@@ -202,7 +143,6 @@ function App() {
               <Route path="content/testimonials" element={<TestimonialsManagement />} />
             </Route>
 
-            {/* Catch all */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

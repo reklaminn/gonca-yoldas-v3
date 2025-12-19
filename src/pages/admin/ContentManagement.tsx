@@ -2,9 +2,16 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileText, Edit, Home, Users, Mail, Laptop, MessageSquareQuote } from 'lucide-react';
+import { FileText, Edit, Home, Users, Mail, Laptop, MessageSquareQuote, Globe } from 'lucide-react';
 
 const pages = [
+  {
+    key: 'global',
+    title: 'Genel Ayarlar',
+    description: 'Duyuru bandı ve site genelindeki metinleri düzenleyin',
+    icon: Globe,
+    color: 'from-indigo-500 to-indigo-600',
+  },
   {
     key: 'home',
     title: 'Anasayfa',
@@ -53,7 +60,7 @@ const ContentManagement: React.FC = () => {
           İçerik Yönetimi
         </h1>
         <p className="text-gray-500 dark:text-gray-400 mt-2">
-          Statik sayfa içeriklerini ve veli yorumlarını düzenleyin
+          Statik sayfa içeriklerini, duyuruları ve veli yorumlarını düzenleyin
         </p>
       </div>
 

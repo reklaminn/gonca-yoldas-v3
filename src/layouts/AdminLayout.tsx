@@ -13,7 +13,8 @@ import {
   Menu,
   X,
   Home,
-  ShieldCheck
+  ShieldCheck,
+  Mail // Mail ikonu eklendi
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -24,6 +25,7 @@ const AdminLayout: React.FC = () => {
 
   const navigation = [
     { name: 'Genel Bakış', href: '/admin', icon: LayoutDashboard },
+    { name: 'Mesajlar', href: '/admin/messages', icon: Mail }, // Mesajlar menüsü eklendi
     { name: 'Kullanıcılar', href: '/admin/students', icon: Users },
     { name: 'Kullanıcı Rolleri', href: '/admin/roles', icon: ShieldCheck },
     { name: 'Programlar', href: '/admin/programs', icon: BookOpen },
