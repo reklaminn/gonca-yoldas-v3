@@ -7,17 +7,30 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables. Please check your .env file.');
 }
 
-// Client'ı oluştururken en sade haliyle oluşturuyoruz
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true,
+    detectSessionInUrl: true, // Session URL'den algılansın
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    storageKey: 'sb-jlwsapdvizzriomadhxj-auth-token',
+    flowType: 'pkce',
   },
   db: {
     schema: 'public',
   }
 });
 
-// Test fonksiyonunu sadece geliştirme ortamında veya manuel çağrıldığında çalışacak şekilde bırakabiliriz
-// Ancak üretim hatasını önlemek için top-level (en üst seviye) çalıştırmıyoruz.
+// Debug: Session durumunu kontrol et
+if (typeof window !== 'undefined') {
+  const storedSession = localStorage.getItem('sb-jlwsapdvizzriomadhxj-auth-token');
+  console.log('🔑 [SupabaseClient] Stored session exists:', !!storedSession);
+  if (storedSession) {
+    try {
+      const parsed = JSON.parse(storedSession);
+      console.log('🔑 [SupabaseClient] Session expires at:', parsed?.expires_at ? new Date(parsed.expires_at * 1000).toLocaleString() : 'N/A');
+    } catch (e) {
+      console.warn('🔑 [SupabaseClient] Could not parse stored session');
+    }
+  }
+}

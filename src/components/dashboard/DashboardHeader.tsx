@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuthStore } from '@/store/authStore';
-import { supabase } from '@/lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import ThemeToggle from '@/components/theme/ThemeToggle';
+import { signOutUser } from '@/services/auth';
+import { toast } from 'sonner';
 
 interface DashboardHeaderProps {
   setSidebarOpen: (open: boolean) => void;
@@ -17,11 +18,21 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({ setSidebarOpen }) => 
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
+    console.log('🔵 [DashboardHeader] handleSignOut called');
+    
     try {
-      await supabase.auth.signOut();
-      navigate('/', { replace: true });
+      const success = await signOutUser();
+      
+      if (success) {
+        console.log('✅ [DashboardHeader] Logout successful, redirecting...');
+        navigate('/', { replace: true });
+      } else {
+        console.error('❌ [DashboardHeader] Logout failed');
+        toast.error('Çıkış yapılırken bir hata oluştu');
+      }
     } catch (error) {
-      console.error('Sign out error:', error);
+      console.error('❌ [DashboardHeader] Logout error:', error);
+      toast.error('Çıkış yapılırken bir hata oluştu');
     }
   };
 

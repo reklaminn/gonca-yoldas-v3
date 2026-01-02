@@ -150,7 +150,7 @@ const Blog: React.FC = () => {
       >
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto text-center">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">Blog</h1>
+            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-white">Blog</h1>
             <p className="text-xl text-blue-100 mb-8">
               Çocuk gelişimi, dil öğrenimi ve ebeveynlik hakkında uzman yazıları
             </p>

@@ -70,9 +70,15 @@ const ProgramDetail: React.FC = () => {
   const metadata = program.metadata || {};
   const installments = metadata.installments || [];
 
-  // ✅ Checkout sayfasına yönlendirme fonksiyonu
+  // ✅ Checkout sayfasına yönlendirme fonksiyonu - DEBUG EKLENDI
   const handleEnrollClick = () => {
+    console.log('🛒 [ProgramDetail] Checkout button clicked');
+    console.log('🛒 [ProgramDetail] Program slug:', program.slug);
+    console.log('🛒 [ProgramDetail] Navigating to:', `/siparis?program=${program.slug}`);
+    
     navigate(`/siparis?program=${program.slug}`);
+    
+    console.log('🛒 [ProgramDetail] Navigate called');
   };
 
   return (

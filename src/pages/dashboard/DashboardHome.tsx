@@ -2,20 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress'; // This component might not be needed after changes
-import { Badge } from '@/components/ui/badge';
 import { 
   BookOpen, 
-  Clock, 
   Award, 
-  TrendingUp,
-  Play,
-  Calendar,
   CheckCircle,
   ArrowRight,
   Loader2
 } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/store/authStore'; // DEĞİŞİKLİK: Store import edildi
 import { supabase } from '@/lib/supabaseClient';
 
 interface DashboardStats {
@@ -37,7 +31,9 @@ interface RecentActivity {
 }
 
 export default function DashboardHome() {
-  const { user, loading: authLoading } = useAuth();
+  // DEĞİŞİKLİK: useAuth yerine useAuthStore kullanıyoruz
+  const { user, loading: authLoading } = useAuthStore();
+  
   const [stats, setStats] = useState<DashboardStats>({
     totalCourses: 0,
     activeCourses: 0,
@@ -50,6 +46,7 @@ export default function DashboardHome() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Auth yüklemesi bittiyse ve kullanıcı varsa verileri çek
     if (!authLoading && user) {
       fetchDashboardData();
     }
@@ -133,22 +130,21 @@ export default function DashboardHome() {
     }
   };
 
-  if (authLoading || loading) {
+  // Auth yükleniyorsa veya veri çekiliyorsa loading göster
+  if (authLoading || (loading && user)) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
-
-  // progressPercentage calculation removed as "Toplam İlerleme" card is removed.
 
   return (
     <div className="space-y-8">
       {/* Welcome Section */}
       <div>
         <h1 className="text-3xl font-bold text-foreground">
-          Hoş Geldiniz, {user?.full_name || user?.email?.split('@')[0]}! 👋
+          Hoş Geldiniz, {user?.user_metadata?.full_name || user?.email?.split('@')[0]}! 👋
         </h1>
         <p className="text-muted-foreground mt-2">
           Öğrenme yolculuğunuza kaldığınız yerden devam edin
@@ -156,7 +152,7 @@ export default function DashboardHome() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"> {/* Changed lg:grid-cols-4 to lg:grid-cols-3 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -185,8 +181,6 @@ export default function DashboardHome() {
           </CardContent>
         </Card>
 
-        {/* "Toplam İlerleme" card removed */}
-
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -203,10 +197,8 @@ export default function DashboardHome() {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Continue Learning section removed. Only "Tüm Kurslarım" quick action remains in this column. */}
-        <div className="lg:col-span-2"> {/* Removed space-y-6 as there's only one main child */}
+        <div className="lg:col-span-2">
           {/* Quick Actions */}
-          {/* Removed inner grid wrapper as there's only one card left */}
           <Card className="bg-gradient-to-br from-primary to-blue-600 text-white">
             <CardContent className="pt-6">
               <BookOpen className="h-8 w-8 mb-4" />
@@ -222,8 +214,6 @@ export default function DashboardHome() {
               </Button>
             </CardContent>
           </Card>
-
-          {/* "İlerleme Takibi" quick action card removed */}
         </div>
 
         {/* Recent Activity */}

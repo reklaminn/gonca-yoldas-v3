@@ -1,28 +1,32 @@
 import React from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/store/authStore';
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
 import DashboardHeader from '@/components/dashboard/DashboardHeader';
 import { Loader2 } from 'lucide-react';
 
 const DashboardLayout: React.FC = () => {
-  const { user, loading } = useAuth();
+  // ARTIK Context yerine Store kullanıyoruz
+  const { user, loading } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
+  // Loading durumu ProtectedRoute tarafından yönetilse de,
+  // layout içinde de tutarlı olması için store'dan kontrol ediyoruz.
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
-        <Loader2 className="h-12 w-12 animate-spin text-[var(--color-primary)]" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
       </div>
     );
   }
 
+  // Kullanıcı yoksa doğru login sayfasına yönlendir
   if (!user) {
-    return <Navigate to="/auth/signin" replace />;
+    return <Navigate to="/auth/login" replace />;
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg)]">
+    <div className="min-h-screen bg-gray-50">
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div 

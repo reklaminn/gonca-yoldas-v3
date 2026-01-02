@@ -49,6 +49,36 @@ export interface ProgramDetails extends Program {
   faqs: ProgramFAQ[];
 }
 
+// Direct fetch to Supabase REST API (bypasses JS client issues)
+async function fetchFromSupabase(tableName: string, query: string): Promise<any> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  const url = `${supabaseUrl}/rest/v1/${tableName}?${query}`;
+  
+  console.log(`🌐 [usePrograms] Fetching from: ${tableName}`);
+  
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'apikey': supabaseKey,
+      'Authorization': `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    }
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('❌ [usePrograms] HTTP Error:', response.status, errorText);
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+  
+  const data = await response.json();
+  console.log(`✅ [usePrograms] Success, ${tableName} items:`, data?.length || 0);
+  return data;
+}
+
 export function usePrograms(status?: 'active' | 'draft' | 'archived') {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,31 +93,21 @@ export function usePrograms(status?: 'active' | 'draft' | 'archived') {
       setLoading(true);
       setError(null);
 
-      if (!supabase) {
-        throw new Error('Supabase client not initialized');
-      }
+      console.log('🔍 [usePrograms] Fetching programs, status:', status || 'all');
 
-      let query = supabase
-        .from('programs')
-        .select('*')
-        .order('sort_order', { ascending: true });
-
+      let query = 'order=sort_order.asc';
+      
       if (status) {
-        query = query.eq('status', status);
+        query += `&status=eq.${status}`;
       }
 
-      const { data, error: fetchError } = await query;
+      const data = await fetchFromSupabase('programs', query);
 
-      if (fetchError) {
-        console.error('Supabase fetch error:', fetchError);
-        throw new Error(fetchError.message || 'Failed to fetch programs');
-      }
-
-      console.log('Programs fetched successfully:', data);
+      console.log('✅ [usePrograms] Programs fetched:', data?.length || 0);
       setPrograms(data || []);
       setError(null);
     } catch (err) {
-      console.error('Error fetching programs:', err);
+      console.error('❌ [usePrograms] Error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch programs';
       setError(errorMessage);
       setPrograms([]);
@@ -115,60 +135,38 @@ export function useProgramDetails(slug: string) {
       setLoading(true);
       setError(null);
 
-      if (!supabase) {
-        throw new Error('Supabase client not initialized');
-      }
+      console.log('🔍 [useProgramDetails] Fetching program:', slug);
 
-      const { data: programData, error: programError } = await supabase
-        .from('programs')
-        .select('*')
-        .eq('slug', slug)
-        .eq('status', 'active')
-        .single();
+      // Fetch program
+      const query = `slug=eq.${encodeURIComponent(slug)}&status=eq.active`;
+      const programData = await fetchFromSupabase('programs', query);
 
-      if (programError) {
-        console.error('Program fetch error:', programError);
-        throw new Error(programError.message);
-      }
-
-      if (!programData) {
+      if (!programData || programData.length === 0) {
         throw new Error('Program not found');
       }
 
-      const { data: featuresData, error: featuresError } = await supabase
-        .from('program_features')
-        .select('*')
-        .eq('program_id', programData.id)
-        .order('sort_order', { ascending: true });
+      const programItem = programData[0];
 
-      if (featuresError) {
-        console.error('Features fetch error:', featuresError);
-        throw new Error(featuresError.message);
-      }
+      // Fetch features
+      const featuresQuery = `program_id=eq.${programItem.id}&order=sort_order.asc`;
+      const featuresData = await fetchFromSupabase('program_features', featuresQuery);
 
-      const { data: faqsData, error: faqsError } = await supabase
-        .from('program_faqs')
-        .select('*')
-        .eq('program_id', programData.id)
-        .order('sort_order', { ascending: true });
+      // Fetch FAQs
+      const faqsQuery = `program_id=eq.${programItem.id}&order=sort_order.asc`;
+      const faqsData = await fetchFromSupabase('program_faqs', faqsQuery);
 
-      if (faqsError) {
-        console.error('FAQs fetch error:', faqsError);
-        throw new Error(faqsError.message);
-      }
-
-      const features = featuresData?.filter(f => f.feature_type === 'feature') || [];
-      const outcomes = featuresData?.filter(f => f.feature_type === 'outcome') || [];
+      const features = featuresData?.filter((f: ProgramFeature) => f.feature_type === 'feature') || [];
+      const outcomes = featuresData?.filter((f: ProgramFeature) => f.feature_type === 'outcome') || [];
 
       setProgram({
-        ...programData,
+        ...programItem,
         features,
         outcomes,
         faqs: faqsData || [],
       });
       setError(null);
     } catch (err) {
-      console.error('Error fetching program details:', err);
+      console.error('❌ [useProgramDetails] Error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch program details';
       setError(errorMessage);
       setProgram(null);
@@ -180,6 +178,7 @@ export function useProgramDetails(slug: string) {
   return { program, loading, error, refetch: fetchProgramDetails };
 }
 
+// Keep using Supabase client for mutations (they work fine for admin operations)
 export async function createProgram(programData: Partial<Program>): Promise<Program> {
   const { data, error } = await supabase
     .from('programs')

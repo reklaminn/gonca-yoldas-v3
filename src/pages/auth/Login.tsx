@@ -11,9 +11,12 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
 export default function Login() {
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuthStore();
+  const { user, profile, session, loading: authLoading, setUser, setProfile, setSession } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,11 +35,19 @@ export default function Login() {
 
   // Redirect if already logged in
   useEffect(() => {
-    if (!authLoading && user) {
-      console.log('✅ User already logged in, redirecting to dashboard');
-      navigate('/dashboard', { replace: true });
+    if (!authLoading && user && profile && session) {
+      console.log('✅ User already logged in, role:', profile.role);
+      console.log('✅ Session available:', !!session.access_token);
+      
+      if (profile.role === 'admin') {
+        console.log('🔐 Admin user detected, redirecting to /admin');
+        navigate('/admin', { replace: true });
+      } else {
+        console.log('👤 Regular user detected, redirecting to /dashboard');
+        navigate('/dashboard', { replace: true });
+      }
     }
-  }, [user, authLoading, navigate]);
+  }, [user, profile, session, authLoading, navigate]);
 
   const validateField = (field: string, value: string) => {
     const newErrors = { ...validationErrors };
@@ -94,36 +105,100 @@ export default function Login() {
       return;
     }
 
-    console.log('🔵 Starting login process');
+    console.log('🔵 [Login] Starting login process for:', email);
     setLoading(true);
 
     try {
+      // 1. Sign in with Supabase Auth
+      console.log('🔵 [Login] Calling signInWithPassword...');
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (signInError) {
-        console.error('❌ Login failed:', signInError);
+        console.error('❌ [Login] Sign in failed:', signInError);
         setError('E-posta veya şifre hatalı');
         setLoading(false);
         return;
       }
 
-      if (!data.user) {
-        console.error('❌ Login failed, no user returned');
+      if (!data.user || !data.session) {
+        console.error('❌ [Login] No user or session returned');
         setError('Giriş yapılamadı. Lütfen tekrar deneyin.');
         setLoading(false);
         return;
       }
 
-      console.log('✅ Login successful, user ID:', data.user.id);
-      toast.success('Giriş başarılı!');
+      console.log('✅ [Login] Sign in successful, user ID:', data.user.id);
+      console.log('✅ [Login] Session received, access_token:', !!data.session.access_token);
+
+      // 2. ✅ CRITICAL: Store session in Zustand IMMEDIATELY
+      console.log('🔵 [Login] Storing session in Zustand...');
+      setSession(data.session);
+      setUser(data.user);
+
+      // 3. Fetch user profile
+      console.log('🔵 [Login] Fetching user profile...');
+      const profileResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${data.user.id}&select=*`,
+        {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${data.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!profileResponse.ok) {
+        const errorData = await profileResponse.json();
+        console.error('❌ [Login] Profile fetch failed:', errorData);
+        setError('Profil bilgileri alınamadı');
+        setLoading(false);
+        return;
+      }
+
+      const profiles = await profileResponse.json();
+      const userProfile = profiles[0];
+
+      if (!userProfile) {
+        console.error('❌ [Login] No profile found');
+        setError('Kullanıcı profili bulunamadı');
+        setLoading(false);
+        return;
+      }
+
+      console.log('✅ [Login] Profile loaded, role:', userProfile.role);
       
-      // AuthStore will handle the redirect via useEffect above
+      // 4. Store profile in Zustand
+      setProfile(userProfile);
+
+      // 5. Verify Zustand state
+      console.log('🔵 [Login] Verifying Zustand state...');
+      const currentState = useAuthStore.getState();
+      console.log('✅ [Login] Zustand state:', {
+        hasUser: !!currentState.user,
+        hasProfile: !!currentState.profile,
+        hasSession: !!currentState.session,
+        hasToken: !!currentState.session?.access_token,
+        role: currentState.profile?.role
+      });
+
+      toast.success('Giriş başarılı!');
+
+      // 6. Redirect based on role
+      if (userProfile.role === 'admin') {
+        console.log('🔐 [Login] Admin login detected, redirecting to /admin');
+        navigate('/admin', { replace: true });
+      } else {
+        console.log('👤 [Login] Regular user login, redirecting to /dashboard');
+        navigate('/dashboard', { replace: true });
+      }
+
       setLoading(false);
     } catch (err: any) {
-      console.error('❌ Login error:', err);
+      console.error('❌ [Login] Unexpected error:', err);
       setError(err?.message || 'Giriş yapılırken bir hata oluştu');
       setLoading(false);
     }

@@ -4,348 +4,286 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { 
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { 
   Users as UsersIcon, 
   Search, 
   UserPlus,
+  MoreVertical,
   Mail,
-  Phone,
   Calendar,
   BookOpen,
   Edit,
-  Trash2,
   Loader2,
-  Eye,
-  MapPin,
-  Building2,
-  Shield,
+  X,
   Save,
-  Plus
+  User,
+  Shield
 } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
+import { useAuthStore } from '@/store/authStore';
 
-interface Student {
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+interface Profile {
   id: string;
-  email: string;
   full_name: string;
-  phone: string;
+  email: string;
   role: string;
+  phone?: string;
   city?: string;
   district?: string;
-  tax_office?: string;
-  tax_number?: string;
   created_at: string;
-  last_sign_in_at?: string;
+}
+
+interface EditFormData {
+  full_name: string;
+  email: string;
+  role: string;
+  phone: string;
+  city: string;
+  district: string;
 }
 
 const AdminStudents: React.FC = () => {
-  const [students, setStudents] = useState<Student[]>([]);
+  const { session } = useAuthStore();
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRole, setSelectedRole] = useState('all');
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
-  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
-  const [isAddingUser, setIsAddingUser] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-
-  // New User State
-  const [newUser, setNewUser] = useState({
-    email: '',
+  
+  // Edit Modal State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<Profile | null>(null);
+  const [editFormData, setEditFormData] = useState<EditFormData>({
     full_name: '',
-    phone: '',
+    email: '',
     role: 'user',
-    password: '' // In a real app, you'd send an invite or use an edge function
+    phone: '',
+    city: '',
+    district: ''
   });
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    fetchStudents();
-  }, []);
+    console.log('👥 [AdminStudents] Component mounted');
+    
+    if (session?.access_token) {
+      fetchProfiles();
+    } else {
+      console.error('❌ [AdminStudents] No access token available!');
+      setLoading(false);
+      toast.error('Oturum bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
+    }
+  }, [session?.access_token]);
 
-  const fetchStudents = async () => {
+  const fetchProfiles = async () => {
+    if (!session?.access_token) {
+      console.error('❌ [AdminStudents] Cannot fetch without token');
+      return;
+    }
+
     try {
+      console.log('👥 [AdminStudents] Fetching profiles...');
       setLoading(true);
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setStudents(data || []);
-    } catch (error) {
-      console.error('Error fetching students:', error);
-      toast.error('Kullanıcılar yüklenirken hata oluştu');
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?select=id,full_name,email,role,phone,city,district,created_at&order=created_at.desc`,
+        {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('❌ [AdminStudents] Fetch failed:', response.status, errorData);
+        throw new Error(`HTTP ${response.status}: ${errorData.message || 'Fetch failed'}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ [AdminStudents] Profiles loaded:', data.length);
+      setProfiles(data || []);
+    } catch (error: any) {
+      console.error('❌ [AdminStudents] Error fetching profiles:', error);
+      toast.error('Kullanıcılar yüklenirken hata oluştu: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsCreating(true);
+  const handleEditClick = (profile: Profile) => {
+    console.log('✏️ [AdminStudents] Opening edit modal for:', profile.id);
+    setEditingUser(profile);
+    setEditFormData({
+      full_name: profile.full_name || '',
+      email: profile.email || '',
+      role: profile.role || 'user',
+      phone: profile.phone || '',
+      city: profile.city || '',
+      district: profile.district || ''
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsEditModalOpen(false);
+    setEditingUser(null);
+    setEditFormData({
+      full_name: '',
+      email: '',
+      role: 'user',
+      phone: '',
+      city: '',
+      district: ''
+    });
+  };
+
+  const handleInputChange = (field: keyof EditFormData, value: string) => {
+    setEditFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSaveUser = async () => {
+    if (!editingUser || !session?.access_token) {
+      toast.error('Kullanıcı bilgisi bulunamadı');
+      return;
+    }
+
+    // Validation
+    if (!editFormData.full_name.trim()) {
+      toast.error('İsim alanı zorunludur');
+      return;
+    }
+
+    if (!editFormData.email.trim()) {
+      toast.error('E-posta alanı zorunludur');
+      return;
+    }
 
     try {
-      // Not: İstemci tarafında doğrudan Auth kullanıcısı oluşturmak güvenlik nedeniyle kısıtlıdır.
-      // Normalde burada bir Supabase Edge Function çağrılır.
-      // Şimdilik profil tablosuna ekleme yapıyoruz (Auth ile senkronize olması için Edge Function gerekir).
-      
-      toast.info('Yeni kullanıcı oluşturma işlemi başlatıldı...');
-      
-      // Simüle edilmiş başarılı işlem (Gerçek uygulamada auth.admin.createUser kullanılır)
-      const { data: { user }, error: authError } = await supabase.auth.signUp({
-        email: newUser.email,
-        password: newUser.password || 'Temp123456!',
-        options: {
-          data: {
-            full_name: newUser.full_name,
-            role: newUser.role
-          }
+      console.log('💾 [AdminStudents] Saving user:', editingUser.id);
+      setIsSaving(true);
+
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${editingUser.id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({
+            full_name: editFormData.full_name.trim(),
+            email: editFormData.email.trim(),
+            role: editFormData.role,
+            phone: editFormData.phone.trim(),
+            city: editFormData.city.trim(),
+            district: editFormData.district.trim()
+          })
         }
-      });
+      );
 
-      if (authError) throw authError;
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('❌ [AdminStudents] Save failed:', response.status, errorData);
+        throw new Error(`HTTP ${response.status}: ${errorData.message || 'Save failed'}`);
+      }
 
-      toast.success('Kullanıcı başarıyla oluşturuldu ve doğrulama e-postası gönderildi.');
-      setIsAddingUser(false);
-      setNewUser({ email: '', full_name: '', phone: '', role: 'user', password: '' });
-      fetchStudents();
+      const updatedData = await response.json();
+      console.log('✅ [AdminStudents] User updated:', updatedData);
+
+      // Update local state
+      setProfiles(prev => prev.map(p => 
+        p.id === editingUser.id ? { ...p, ...updatedData[0] } : p
+      ));
+
+      toast.success('Kullanıcı başarıyla güncellendi!');
+      handleCloseModal();
     } catch (error: any) {
-      console.error('Error creating user:', error);
-      toast.error(error.message || 'Kullanıcı oluşturulurken bir hata oluştu');
+      console.error('❌ [AdminStudents] Error saving user:', error);
+      toast.error('Kullanıcı güncellenirken hata oluştu: ' + error.message);
     } finally {
-      setIsCreating(false);
-    }
-  };
-
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingStudent) return;
-
-    try {
-      setIsUpdating(true);
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          full_name: editingStudent.full_name,
-          phone: editingStudent.phone,
-          city: editingStudent.city,
-          district: editingStudent.district,
-          tax_office: editingStudent.tax_office,
-          tax_number: editingStudent.tax_number,
-          role: editingStudent.role
-        })
-        .eq('id', editingStudent.id);
-
-      if (error) throw error;
-
-      setStudents(students.map(s => s.id === editingStudent.id ? editingStudent : s));
-      toast.success('Kullanıcı bilgileri güncellendi');
-      setEditingStudent(null);
-    } catch (error) {
-      console.error('Error updating student:', error);
-      toast.error('Güncelleme sırasında bir hata oluştu');
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    try {
-      setIsDeleting(true);
-      const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      
-      setStudents(students.filter(s => s.id !== id));
-      toast.success('Kullanıcı başarıyla silindi');
-    } catch (error) {
-      console.error('Error deleting student:', error);
-      toast.error('Kullanıcı silinirken hata oluştu');
-    } finally {
-      setIsDeleting(false);
+      setIsSaving(false);
     }
   };
 
   const getRoleBadge = (role: string) => {
     const config = {
-      admin: { label: 'Admin', variant: 'default' as const, color: 'bg-red-500/10 text-red-500 border-red-500/20' },
-      instructor: { label: 'Eğitmen', variant: 'secondary' as const, color: 'bg-blue-500/10 text-blue-500 border-blue-500/20' },
-      user: { label: 'Öğrenci', variant: 'outline' as const, color: 'bg-green-500/10 text-green-500 border-green-500/20' },
-      student: { label: 'Öğrenci', variant: 'outline' as const, color: 'bg-green-500/10 text-green-500 border-green-500/20' },
+      admin: { label: 'Admin', variant: 'default' as const },
+      instructor: { label: 'Eğitmen', variant: 'secondary' as const },
+      student: { label: 'Öğrenci', variant: 'outline' as const },
+      user: { label: 'Öğrenci', variant: 'outline' as const },
     };
-    const roleConfig = config[role as keyof typeof config] || config.user;
-    return <Badge variant={roleConfig.variant} className={roleConfig.color}>{roleConfig.label}</Badge>;
+    const roleConfig = config[role as keyof typeof config] || config.student;
+    return <Badge variant={roleConfig.variant}>{roleConfig.label}</Badge>;
   };
 
-  const filteredStudents = students.filter(student => {
-    const matchesSearch = 
-      (student.full_name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-      (student.email?.toLowerCase() || '').includes(searchQuery.toLowerCase());
-    const matchesRole = selectedRole === 'all' || student.role === selectedRole;
+  const filteredProfiles = profiles.filter(profile => {
+    const matchesSearch = profile.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        profile.email?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = selectedRole === 'all' || profile.role === selectedRole;
     return matchesSearch && matchesRole;
   });
 
   const stats = [
     {
       label: 'Toplam Kullanıcı',
-      value: students.length,
+      value: profiles.length,
       icon: UsersIcon,
       color: 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
     },
     {
       label: 'Öğrenci',
-      value: students.filter(s => s.role === 'user' || s.role === 'student').length,
+      value: profiles.filter(p => p.role === 'student' || p.role === 'user').length,
       icon: BookOpen,
       color: 'bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400'
     },
     {
       label: 'Eğitmen',
-      value: students.filter(s => s.role === 'instructor').length,
+      value: profiles.filter(p => p.role === 'instructor').length,
       icon: UsersIcon,
       color: 'bg-yellow-100 dark:bg-yellow-950 text-yellow-600 dark:text-yellow-400'
     },
     {
       label: 'Admin',
-      value: students.filter(s => s.role === 'admin').length,
+      value: profiles.filter(p => p.role === 'admin').length,
       icon: Shield,
-      color: 'bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400'
+      color: 'bg-green-100 dark:bg-green-950 text-green-600 dark:text-green-400'
     },
   ];
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-[var(--color-primary)]" />
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600 dark:text-gray-400">Kullanıcılar yükleniyor...</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
+      {/* Header */}
       <div>
         <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-[var(--fg)]">Kullanıcı Yönetimi</h1>
-            <p className="text-[var(--fg-muted)] mt-2">Tüm kullanıcıları ve rollerini yönetin</p>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Kullanıcı Yönetimi</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">Tüm kullanıcıları görüntüleyin ve yönetin</p>
           </div>
-          
-          {/* New User Dialog */}
-          <Dialog open={isAddingUser} onOpenChange={setIsAddingUser}>
-            <DialogTrigger asChild>
-              <Button className="bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90">
-                <UserPlus className="h-4 w-4 mr-2" />
-                Yeni Kullanıcı
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Yeni Kullanıcı Ekle</DialogTitle>
-                <DialogDescription>
-                  Sisteme yeni bir kullanıcı kaydı oluşturun. Kullanıcıya doğrulama e-postası gönderilecektir.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleCreateUser} className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="new_full_name">Ad Soyad</Label>
-                  <Input 
-                    id="new_full_name"
-                    placeholder="Örn: Ahmet Yılmaz"
-                    value={newUser.full_name}
-                    onChange={(e) => setNewUser({...newUser, full_name: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new_email">E-posta Adresi</Label>
-                  <Input 
-                    id="new_email"
-                    type="email"
-                    placeholder="ornek@eposta.com"
-                    value={newUser.email}
-                    onChange={(e) => setNewUser({...newUser, email: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new_password">Geçici Şifre</Label>
-                  <Input 
-                    id="new_password"
-                    type="password"
-                    placeholder="En az 6 karakter"
-                    value={newUser.password}
-                    onChange={(e) => setNewUser({...newUser, password: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new_role">Rol</Label>
-                  <Select 
-                    value={newUser.role} 
-                    onValueChange={(val) => setNewUser({...newUser, role: val})}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Rol seçin" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="user">Öğrenci</SelectItem>
-                      <SelectItem value="instructor">Eğitmen</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <DialogFooter className="pt-4">
-                  <Button type="button" variant="outline" onClick={() => setIsAddingUser(false)}>
-                    İptal
-                  </Button>
-                  <Button type="submit" disabled={isCreating} className="bg-[var(--color-primary)]">
-                    {isCreating ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Oluşturuluyor...
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Kullanıcıyı Oluştur
-                      </>
-                    )}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <Button className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600">
+            <UserPlus className="h-4 w-4 mr-2" />
+            Yeni Kullanıcı
+          </Button>
         </div>
       </div>
 
@@ -354,12 +292,12 @@ const AdminStudents: React.FC = () => {
         {stats.map((stat, index) => {
           const Icon = stat.icon;
           return (
-            <Card key={index} className="border-[var(--border)] bg-[var(--bg-card)]">
+            <Card key={index} className="border-gray-200 dark:border-gray-800">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-[var(--fg-muted)] mb-1">{stat.label}</p>
-                    <p className="text-2xl font-bold text-[var(--fg)]">{stat.value}</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{stat.label}</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
                   </div>
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center ${stat.color}`}>
                     <Icon className="h-6 w-6" />
@@ -372,16 +310,16 @@ const AdminStudents: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <Card className="border-[var(--border)] bg-[var(--bg-card)]">
+      <Card className="border-gray-200 dark:border-gray-800">
         <CardContent className="pt-6">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-[var(--fg-muted)]" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 placeholder="Kullanıcı ara (isim, e-posta)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 bg-[var(--bg-input)] text-[var(--fg)] border-[var(--border)]"
+                className="pl-10 border-gray-300 dark:border-gray-700"
               />
             </div>
             <div className="flex gap-2 flex-wrap">
@@ -393,8 +331,8 @@ const AdminStudents: React.FC = () => {
                 Tümü
               </Button>
               <Button
-                variant={selectedRole === 'user' ? 'default' : 'outline'}
-                onClick={() => setSelectedRole('user')}
+                variant={selectedRole === 'student' ? 'default' : 'outline'}
+                onClick={() => setSelectedRole('student')}
                 size="sm"
               >
                 Öğrenci
@@ -419,261 +357,214 @@ const AdminStudents: React.FC = () => {
       </Card>
 
       {/* Users List */}
-      <Card className="border-[var(--border)] bg-[var(--bg-card)]">
+      <Card className="border-gray-200 dark:border-gray-800">
         <CardHeader>
-          <CardTitle className="text-[var(--fg)]">Kullanıcı Listesi ({filteredStudents.length})</CardTitle>
+          <CardTitle className="text-gray-900 dark:text-white">Kullanıcı Listesi ({filteredProfiles.length})</CardTitle>
+          <CardDescription className="text-gray-600 dark:text-gray-400">Sistemdeki tüm kullanıcılar</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {filteredStudents.map((student) => (
-              <div key={student.id} className="flex flex-col md:flex-row md:items-center gap-4 p-4 bg-[var(--bg-surface)] rounded-xl border border-[var(--border)] hover:border-[var(--color-primary-alpha)] transition-all">
-                <div className="w-12 h-12 bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-secondary)] rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
-                  {student.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
+            {filteredProfiles.map((profile) => (
+              <div key={profile.id} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border border-gray-100 dark:border-gray-800">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-400 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
+                  {profile.full_name?.split(' ').map(n => n[0]).join('') || 'U'}
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
-                    <h3 className="font-bold text-[var(--fg)]">{student.full_name || 'İsimsiz Kullanıcı'}</h3>
-                    {getRoleBadge(student.role)}
+                    <h3 className="font-semibold text-gray-900 dark:text-white">{profile.full_name || 'İsimsiz'}</h3>
+                    {getRoleBadge(profile.role)}
                   </div>
-                  <div className="grid md:grid-cols-3 gap-2 text-sm text-[var(--fg-muted)]">
+                  <div className="grid md:grid-cols-2 gap-2 text-sm text-gray-600 dark:text-gray-400">
                     <div className="flex items-center gap-2">
-                      <Mail className="h-4 w-4 flex-shrink-0 text-[var(--color-primary)]" />
-                      <span className="truncate">{student.email}</span>
+                      <Mail className="h-4 w-4 flex-shrink-0" />
+                      <span className="truncate">{profile.email}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Phone className="h-4 w-4 flex-shrink-0 text-[var(--color-primary)]" />
-                      <span>{student.phone || 'Telefon yok'}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 flex-shrink-0 text-[var(--color-primary)]" />
-                      <span>Kayıt: {new Date(student.created_at).toLocaleDateString('tr-TR')}</span>
+                      <Calendar className="h-4 w-4 flex-shrink-0" />
+                      <span>Kayıt: {new Date(profile.created_at).toLocaleDateString('tr-TR')}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 md:ml-auto">
-                  {/* Detail Dialog */}
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm" onClick={() => setSelectedStudent(student)}>
-                        <Eye className="h-4 w-4 mr-2" />
-                        Detay
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>Kullanıcı Profili</DialogTitle>
-                        <DialogDescription>
-                          {student.full_name} kullanıcısının detaylı bilgileri
-                        </DialogDescription>
-                      </DialogHeader>
-                      
-                      {selectedStudent && (
-                        <div className="space-y-6 py-4">
-                          <div className="flex items-center gap-4">
-                            <div className="w-16 h-16 bg-[var(--color-primary)] rounded-full flex items-center justify-center text-white text-2xl font-bold">
-                              {selectedStudent.full_name?.[0].toUpperCase()}
-                            </div>
-                            <div>
-                              <h4 className="text-lg font-bold">{selectedStudent.full_name}</h4>
-                              <p className="text-sm text-[var(--fg-muted)]">{selectedStudent.email}</p>
-                            </div>
-                          </div>
-
-                          <div className="grid gap-4">
-                            <div className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)]">
-                              <Phone className="h-5 w-5 text-[var(--color-primary)]" />
-                              <div>
-                                <p className="text-xs text-[var(--fg-muted)]">Telefon</p>
-                                <p className="text-sm font-medium">{selectedStudent.phone || '-'}</p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)]">
-                              <MapPin className="h-5 w-5 text-[var(--color-primary)]" />
-                              <div>
-                                <p className="text-xs text-[var(--fg-muted)]">Konum</p>
-                                <p className="text-sm font-medium">
-                                  {selectedStudent.district && selectedStudent.city 
-                                    ? `${selectedStudent.district} / ${selectedStudent.city}` 
-                                    : 'Belirtilmemiş'}
-                                </p>
-                              </div>
-                            </div>
-
-                            {(selectedStudent.tax_office || selectedStudent.tax_number) && (
-                              <div className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)]">
-                                <Building2 className="h-5 w-5 text-[var(--color-primary)]" />
-                                <div>
-                                  <p className="text-xs text-[var(--fg-muted)]">Vergi Bilgileri</p>
-                                  <p className="text-sm font-medium">
-                                    {selectedStudent.tax_office} - {selectedStudent.tax_number}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-
-                            <div className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)]">
-                              <Shield className="h-5 w-5 text-[var(--color-primary)]" />
-                              <div>
-                                <p className="text-xs text-[var(--fg-muted)]">Rol</p>
-                                <p className="text-sm font-medium capitalize">{selectedStudent.role}</p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </DialogContent>
-                  </Dialog>
-
-                  {/* Edit Dialog */}
-                  <Dialog open={!!editingStudent} onOpenChange={(open) => !open && setEditingStudent(null)}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm" onClick={() => setEditingStudent(student)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                      <DialogHeader>
-                        <DialogTitle>Kullanıcıyı Düzenle</DialogTitle>
-                        <DialogDescription>
-                          Kullanıcı bilgilerini güncelleyin. E-posta adresi değiştirilemez.
-                        </DialogDescription>
-                      </DialogHeader>
-                      
-                      {editingStudent && (
-                        <form onSubmit={handleUpdate} className="space-y-6 py-4">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="full_name">Ad Soyad</Label>
-                              <Input 
-                                id="full_name"
-                                value={editingStudent.full_name}
-                                onChange={(e) => setEditingStudent({...editingStudent, full_name: e.target.value})}
-                                required
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="phone">Telefon</Label>
-                              <Input 
-                                id="phone"
-                                value={editingStudent.phone || ''}
-                                onChange={(e) => setEditingStudent({...editingStudent, phone: e.target.value})}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="city">Şehir</Label>
-                              <Input 
-                                id="city"
-                                value={editingStudent.city || ''}
-                                onChange={(e) => setEditingStudent({...editingStudent, city: e.target.value})}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="district">İlçe</Label>
-                              <Input 
-                                id="district"
-                                value={editingStudent.district || ''}
-                                onChange={(e) => setEditingStudent({...editingStudent, district: e.target.value})}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="tax_office">Vergi Dairesi</Label>
-                              <Input 
-                                id="tax_office"
-                                value={editingStudent.tax_office || ''}
-                                onChange={(e) => setEditingStudent({...editingStudent, tax_office: e.target.value})}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="tax_number">Vergi No / TC</Label>
-                              <Input 
-                                id="tax_number"
-                                value={editingStudent.tax_number || ''}
-                                onChange={(e) => setEditingStudent({...editingStudent, tax_number: e.target.value})}
-                              />
-                            </div>
-                            <div className="space-y-2 md:col-span-2">
-                              <Label htmlFor="role">Kullanıcı Rolü</Label>
-                              <Select 
-                                value={editingStudent.role} 
-                                onValueChange={(val) => setEditingStudent({...editingStudent, role: val})}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Rol seçin" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="user">Öğrenci</SelectItem>
-                                  <SelectItem value="instructor">Eğitmen</SelectItem>
-                                  <SelectItem value="admin">Admin</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-
-                          <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setEditingStudent(null)}>
-                              İptal
-                            </Button>
-                            <Button type="submit" disabled={isUpdating} className="bg-[var(--color-primary)]">
-                              {isUpdating ? (
-                                <>
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  Güncelleniyor...
-                                </>
-                              ) : (
-                                <>
-                                  <Save className="mr-2 h-4 w-4" />
-                                  Değişiklikleri Kaydet
-                                </>
-                              )}
-                            </Button>
-                          </DialogFooter>
-                        </form>
-                      )}
-                    </DialogContent>
-                  </Dialog>
-
-                  {/* Delete Confirmation */}
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Kullanıcıyı Sil</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Bu kullanıcıyı silmek istediğinize emin misiniz? Bu işlem kullanıcının profil verilerini kalıcı olarak silecektir.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Vazgeç</AlertDialogCancel>
-                        <AlertDialogAction 
-                          onClick={() => handleDelete(student.id)}
-                          className="bg-red-500 hover:bg-red-600"
-                          disabled={isDeleting}
-                        >
-                          {isDeleting ? 'Siliniyor...' : 'Evet, Sil'}
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                <div className="flex gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => handleEditClick(profile)}
+                    className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-blue-50 dark:hover:bg-blue-950 hover:border-blue-500 dark:hover:border-blue-500 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-all"
+                    title="Düzenle"
+                  >
+                    <Edit className="h-4 w-4" />
+                  </button>
+                  
+                  <button
+                    onClick={() => toast.info('Daha fazla seçenek yakında...')}
+                    className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition-colors"
+                    title="Daha fazla seçenek"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
             ))}
 
-            {filteredStudents.length === 0 && (
+            {filteredProfiles.length === 0 && (
               <div className="text-center py-12">
-                <UsersIcon className="h-16 w-16 text-[var(--fg-muted)] mx-auto mb-4" />
-                <p className="text-[var(--fg-muted)] text-lg">Kullanıcı bulunamadı</p>
+                <UsersIcon className="h-16 w-16 text-gray-400 dark:text-gray-600 mx-auto mb-4" />
+                <p className="text-gray-600 dark:text-gray-400 text-lg">Kullanıcı bulunamadı</p>
+                <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">Arama kriterlerinizi değiştirmeyi deneyin</p>
               </div>
             )}
           </div>
         </CardContent>
       </Card>
+
+      {/* Edit Modal */}
+      {isEditModalOpen && editingUser && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-200 dark:border-gray-800">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-purple-400 rounded-full flex items-center justify-center text-white font-bold">
+                  {editingUser.full_name?.split(' ').map(n => n[0]).join('') || 'U'}
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">Kullanıcı Düzenle</h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">{editingUser.email}</p>
+                </div>
+              </div>
+              <button
+                onClick={handleCloseModal}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6">
+              {/* Full Name */}
+              <div className="space-y-2">
+                <Label htmlFor="full_name" className="text-gray-900 dark:text-white flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  Ad Soyad *
+                </Label>
+                <Input
+                  id="full_name"
+                  value={editFormData.full_name}
+                  onChange={(e) => handleInputChange('full_name', e.target.value)}
+                  placeholder="Kullanıcının tam adı"
+                  className="border-gray-300 dark:border-gray-700"
+                />
+              </div>
+
+              {/* Email */}
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-gray-900 dark:text-white flex items-center gap-2">
+                  <Mail className="h-4 w-4" />
+                  E-posta *
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={editFormData.email}
+                  onChange={(e) => handleInputChange('email', e.target.value)}
+                  placeholder="kullanici@example.com"
+                  className="border-gray-300 dark:border-gray-700"
+                />
+              </div>
+
+              {/* Role */}
+              <div className="space-y-2">
+                <Label htmlFor="role" className="text-gray-900 dark:text-white flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Rol *
+                </Label>
+                <select
+                  id="role"
+                  value={editFormData.role}
+                  onChange={(e) => handleInputChange('role', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="user">Öğrenci</option>
+                  <option value="instructor">Eğitmen</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+
+              {/* Phone */}
+              <div className="space-y-2">
+                <Label htmlFor="phone" className="text-gray-900 dark:text-white">
+                  Telefon
+                </Label>
+                <Input
+                  id="phone"
+                  value={editFormData.phone}
+                  onChange={(e) => handleInputChange('phone', e.target.value)}
+                  placeholder="0555 123 45 67"
+                  className="border-gray-300 dark:border-gray-700"
+                />
+              </div>
+
+              {/* City & District */}
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="city" className="text-gray-900 dark:text-white">
+                    Şehir
+                  </Label>
+                  <Input
+                    id="city"
+                    value={editFormData.city}
+                    onChange={(e) => handleInputChange('city', e.target.value)}
+                    placeholder="İstanbul"
+                    className="border-gray-300 dark:border-gray-700"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="district" className="text-gray-900 dark:text-white">
+                    İlçe
+                  </Label>
+                  <Input
+                    id="district"
+                    value={editFormData.district}
+                    onChange={(e) => handleInputChange('district', e.target.value)}
+                    placeholder="Kadıköy"
+                    className="border-gray-300 dark:border-gray-700"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-800">
+              <Button
+                variant="outline"
+                onClick={handleCloseModal}
+                disabled={isSaving}
+              >
+                İptal
+              </Button>
+              <Button
+                onClick={handleSaveUser}
+                disabled={isSaving}
+                className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Kaydediliyor...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Kaydet
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

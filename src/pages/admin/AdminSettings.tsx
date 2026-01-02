@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
+import { AgeGroupsManager } from '@/components/admin/AgeGroupsManager';
 
 const AdminSettings: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -161,8 +162,11 @@ const AdminSettings: React.FC = () => {
           </CardContent>
         </Card>
 
+        {/* Age Groups Manager - New Component */}
+        <AgeGroupsManager />
+
         {/* SMTP Settings */}
-        <Card className="border-[var(--border)] bg-[var(--bg-card)]">
+        <Card className="border-[var(--border)] bg-[var(--bg-card)] lg:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-[var(--fg)]">
               <Server className="h-5 w-5 text-[var(--color-primary)]" />

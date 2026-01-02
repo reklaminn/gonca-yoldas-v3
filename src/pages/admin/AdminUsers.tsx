@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,75 +17,81 @@ import {
   Trash2,
   Ban,
   CheckCircle,
-  XCircle
+  XCircle,
+  Loader2
 } from 'lucide-react';
+import { useAuthStore } from '@/store/authStore';
+import { toast } from 'sonner';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+interface User {
+  id: string;
+  email: string;
+  full_name: string;
+  phone?: string;
+  role: string;
+  created_at: string;
+  updated_at: string;
+}
 
 const AdminUsers: React.FC = () => {
+  console.log('🎯 [AdminUsers] Component mounting...');
+  
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRole, setSelectedRole] = useState('all');
+  const { session } = useAuthStore(); // ✅ Session'dan access_token al
 
-  const users = [
-    {
-      id: 1,
-      name: 'Ayşe Yılmaz',
-      email: 'ayse.yilmaz@example.com',
-      phone: '+90 532 123 45 67',
-      role: 'student',
-      status: 'active',
-      joinDate: '1 Ocak 2025',
-      courses: 3,
-      totalSpent: 10497,
-      lastActive: '2 saat önce'
-    },
-    {
-      id: 2,
-      name: 'Mehmet Demir',
-      email: 'mehmet.demir@example.com',
-      phone: '+90 533 234 56 78',
-      role: 'student',
-      status: 'active',
-      joinDate: '5 Ocak 2025',
-      courses: 2,
-      totalSpent: 7498,
-      lastActive: '1 gün önce'
-    },
-    {
-      id: 3,
-      name: 'Zeynep Kaya',
-      email: 'zeynep.kaya@example.com',
-      phone: '+90 534 345 67 89',
-      role: 'instructor',
-      status: 'active',
-      joinDate: '15 Aralık 2024',
-      courses: 5,
-      totalSpent: 0,
-      lastActive: '5 saat önce'
-    },
-    {
-      id: 4,
-      name: 'Ali Öztürk',
-      email: 'ali.ozturk@example.com',
-      phone: '+90 535 456 78 90',
-      role: 'student',
-      status: 'inactive',
-      joinDate: '20 Kasım 2024',
-      courses: 1,
-      totalSpent: 2499,
-      lastActive: '2 hafta önce'
-    },
-    {
-      id: 5,
-      name: 'Fatma Şahin',
-      email: 'fatma.sahin@example.com',
-      phone: '+90 536 567 89 01',
-      role: 'admin',
-      status: 'active',
-      joinDate: '1 Eylül 2024',
-      courses: 0,
-      totalSpent: 0,
-      lastActive: '1 saat önce'
-    },
-  ];
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    console.log('🔵 [AdminUsers] Fetching users...');
+    
+    try {
+      setLoading(true);
+      
+      if (!session?.access_token) {
+        console.error('❌ [AdminUsers] No access token');
+        toast.error('Oturum bilgisi bulunamadı');
+        return;
+      }
+
+      console.log('✅ [AdminUsers] Access token available, fetching...');
+
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?select=*&order=created_at.desc`,
+        {
+          method: 'GET',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`, // ✅ Session'dan token
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [AdminUsers] Fetch failed:', response.status, errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ [AdminUsers] Users fetched:', data.length);
+      
+      setUsers(data || []);
+    } catch (error: any) {
+      console.error('❌ [AdminUsers] Error:', error);
+      toast.error('Kullanıcılar yüklenirken hata: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const stats = [
     {
@@ -96,7 +102,7 @@ const AdminUsers: React.FC = () => {
     },
     {
       label: 'Aktif Kullanıcı',
-      value: users.filter(u => u.status === 'active').length,
+      value: users.length,
       icon: CheckCircle,
       color: 'bg-green-100 dark:bg-green-950 text-green-600 dark:text-green-400'
     },
@@ -107,8 +113,8 @@ const AdminUsers: React.FC = () => {
       color: 'bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400'
     },
     {
-      label: 'Eğitmen',
-      value: users.filter(u => u.role === 'instructor').length,
+      label: 'Admin',
+      value: users.filter(u => u.role === 'admin').length,
       icon: UsersIcon,
       color: 'bg-yellow-100 dark:bg-yellow-950 text-yellow-600 dark:text-yellow-400'
     },
@@ -120,16 +126,16 @@ const AdminUsers: React.FC = () => {
       instructor: { label: 'Eğitmen', variant: 'secondary' as const },
       student: { label: 'Öğrenci', variant: 'outline' as const },
     };
-    const roleConfig = config[role as keyof typeof config];
+    const roleConfig = config[role as keyof typeof config] || config.student;
     return <Badge variant={roleConfig.variant}>{roleConfig.label}</Badge>;
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string = 'active') => {
     const config = {
       active: { label: 'Aktif', variant: 'default' as const, icon: CheckCircle },
       inactive: { label: 'Pasif', variant: 'secondary' as const, icon: XCircle },
     };
-    const statusConfig = config[status as keyof typeof config];
+    const statusConfig = config[status as keyof typeof config] || config.active;
     const Icon = statusConfig.icon;
     return (
       <Badge variant={statusConfig.variant} className="flex items-center gap-1 w-fit">
@@ -140,11 +146,20 @@ const AdminUsers: React.FC = () => {
   };
 
   const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        user.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = 
+      user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRole = selectedRole === 'all' || user.role === selectedRole;
     return matchesSearch && matchesRole;
   });
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-[var(--color-primary)]" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -214,14 +229,6 @@ const AdminUsers: React.FC = () => {
                 Öğrenci
               </Button>
               <Button
-                variant={selectedRole === 'instructor' ? 'default' : 'outline'}
-                onClick={() => setSelectedRole('instructor')}
-                size="sm"
-                className="border-gray-300 dark:border-gray-700"
-              >
-                Eğitmen
-              </Button>
-              <Button
                 variant={selectedRole === 'admin' ? 'default' : 'outline'}
                 onClick={() => setSelectedRole('admin')}
                 size="sm"
@@ -245,39 +252,31 @@ const AdminUsers: React.FC = () => {
             {filteredUsers.map((user) => (
               <div key={user.id} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border border-gray-100 dark:border-gray-800">
                 <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-400 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
-                  {user.name.split(' ').map(n => n[0]).join('')}
+                  {user.full_name?.split(' ').map(n => n[0]).join('') || user.email[0].toUpperCase()}
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
-                    <h3 className="font-semibold text-gray-900 dark:text-white">{user.name}</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-white">{user.full_name || user.email}</h3>
                     {getRoleBadge(user.role)}
-                    {getStatusBadge(user.status)}
+                    {getStatusBadge('active')}
                   </div>
                   <div className="grid md:grid-cols-2 gap-2 text-sm text-gray-600 dark:text-gray-400">
                     <div className="flex items-center gap-2">
                       <Mail className="h-4 w-4 flex-shrink-0" />
                       <span className="truncate">{user.email}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Phone className="h-4 w-4 flex-shrink-0" />
-                      <span>{user.phone}</span>
-                    </div>
+                    {user.phone && (
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-4 w-4 flex-shrink-0" />
+                        <span>{user.phone}</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2">
                       <Calendar className="h-4 w-4 flex-shrink-0" />
-                      <span>Kayıt: {user.joinDate}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <BookOpen className="h-4 w-4 flex-shrink-0" />
-                      <span>{user.courses} kurs</span>
+                      <span>Kayıt: {new Date(user.created_at).toLocaleDateString('tr-TR')}</span>
                     </div>
                   </div>
-                </div>
-
-                <div className="text-right flex-shrink-0">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Toplam Harcama</p>
-                  <p className="font-bold text-gray-900 dark:text-white">₺{user.totalSpent.toLocaleString()}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{user.lastActive}</p>
                 </div>
 
                 <div className="flex gap-2 flex-shrink-0">
@@ -295,7 +294,9 @@ const AdminUsers: React.FC = () => {
               <div className="text-center py-12">
                 <UsersIcon className="h-16 w-16 text-gray-400 dark:text-gray-600 mx-auto mb-4" />
                 <p className="text-gray-600 dark:text-gray-400 text-lg">Kullanıcı bulunamadı</p>
-                <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">Arama kriterlerinizi değiştirmeyi deneyin</p>
+                <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">
+                  {users.length === 0 ? 'Henüz kayıtlı kullanıcı yok' : 'Arama kriterlerinizi değiştirmeyi deneyin'}
+                </p>
               </div>
             )}
           </div>

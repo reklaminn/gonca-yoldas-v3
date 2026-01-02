@@ -1,5 +1,5 @@
 import React from 'react';
-import { Outlet, Link, useLocation, Navigate } from 'react-router-dom';
+import { Outlet, Link, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { 
@@ -16,14 +16,29 @@ import {
   ShieldCheck,
   Mail
 } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
+import { useAuthStore } from '@/store/authStore';
+import { signOutUser } from '@/services/auth';
+import { toast } from 'sonner';
 
 const AdminLayout: React.FC = () => {
-  const { user, profile } = useAuth();
+  const { user, profile, session } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
   const isAdmin = profile?.role === 'admin';
+
+  // ✅ Debug: Log auth state
+  React.useEffect(() => {
+    console.log('🔵 [AdminLayout] Auth state:', {
+      hasUser: !!user,
+      hasProfile: !!profile,
+      hasSession: !!session,
+      hasToken: !!session?.access_token,
+      role: profile?.role,
+      isAdmin
+    });
+  }, [user, profile, session, isAdmin]);
 
   const navigation = [
     { name: 'Genel Bakış', href: '/admin', icon: LayoutDashboard },
@@ -37,12 +52,38 @@ const AdminLayout: React.FC = () => {
   ];
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    window.location.href = '/';
+    console.log('🔵 [AdminLayout] handleSignOut called');
+    
+    try {
+      const success = await signOutUser();
+      
+      if (success) {
+        console.log('✅ [AdminLayout] Logout successful, redirecting...');
+        navigate('/', { replace: true });
+      } else {
+        console.error('❌ [AdminLayout] Logout failed');
+        toast.error('Çıkış yapılırken bir hata oluştu');
+      }
+    } catch (error) {
+      console.error('❌ [AdminLayout] Logout error:', error);
+      toast.error('Çıkış yapılırken bir hata oluştu');
+    }
   };
 
-  if (!user) return <Navigate to="/auth/login" replace />;
-  if (!isAdmin) return <Navigate to="/dashboard" replace />;
+  if (!user) {
+    console.log('❌ [AdminLayout] No user, redirecting to login');
+    return <Navigate to="/auth/login" replace />;
+  }
+  
+  if (!isAdmin) {
+    console.log('❌ [AdminLayout] Not admin, redirecting to dashboard');
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  if (!session?.access_token) {
+    console.error('❌ [AdminLayout] No access token available!');
+    return <Navigate to="/auth/login" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">

@@ -26,20 +26,18 @@ import {
   Image as ImageIcon,
   Link as LinkIcon,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
-import {
-  createProgram,
-  updateProgram,
-  uploadProgramImage,
-  addProgramFeature,
-  addProgramFAQ,
-} from '@/hooks/usePrograms';
+import { useAgeGroups } from '@/hooks/useAgeGroups';
+import { useAuthStore } from '@/store/authStore';
+import { toast } from 'sonner';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 interface ProgramFormData {
   title: string;
   short_title: string;
   title_en: string;
-  age_group: '0-2' | '2-5' | '5-10';
+  age_group: string;
   age_range: string;
   description: string;
   price: number;
@@ -61,6 +59,8 @@ const ProgramForm: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const isEditMode = !!id;
+  const { session } = useAuthStore();
+  const { ageGroups, loading: ageGroupsLoading } = useAgeGroups();
 
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(isEditMode);
@@ -86,8 +86,8 @@ const ProgramForm: React.FC = () => {
       title: '',
       short_title: '',
       title_en: '',
-      age_group: '0-2',
-      age_range: '0-2 Yaş',
+      age_group: '',
+      age_range: '',
       description: '',
       price: 0,
       iyzilink: '',
@@ -136,51 +136,84 @@ const ProgramForm: React.FC = () => {
 
   // Update age_range when age_group changes
   useEffect(() => {
-    const ageRangeMap = {
-      '0-2': '0-2 Yaş',
-      '2-5': '2-5 Yaş',
-      '5-10': '5-10 Yaş',
-    };
-    setValue('age_range', ageRangeMap[ageGroup]);
-  }, [ageGroup]);
+    if (ageGroup && ageGroups.length > 0) {
+      const selectedGroup = ageGroups.find(g => g.value === ageGroup);
+      if (selectedGroup) {
+        setValue('age_range', selectedGroup.label);
+      }
+    }
+  }, [ageGroup, ageGroups, setValue]);
 
   // Load existing program data in edit mode
   const loadProgramData = useCallback(async (programId: string) => {
+    if (!session?.access_token) {
+      console.error('❌ [ProgramForm] No access token');
+      toast.error('Oturum bilgisi bulunamadı');
+      return;
+    }
+
     try {
+      console.log('📝 [ProgramForm] Loading program:', programId);
       setInitialLoading(true);
 
       // Fetch program
-      const { data: program, error: programError } = await supabase
-        .from('programs')
-        .select('*')
-        .eq('id', programId)
-        .single();
+      const programResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/programs?id=eq.${programId}&select=*`,
+        {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
-      if (programError) throw programError;
+      if (!programResponse.ok) {
+        throw new Error('Program yüklenemedi');
+      }
+
+      const programData = await programResponse.json();
+      const program = programData[0];
+
+      if (!program) {
+        throw new Error('Program bulunamadı');
+      }
+
+      console.log('✅ [ProgramForm] Program loaded:', program.title);
 
       // Fetch features
-      const { data: features, error: featuresError } = await supabase
-        .from('program_features')
-        .select('*')
-        .eq('program_id', programId)
-        .order('sort_order');
+      const featuresResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/program_features?program_id=eq.${programId}&order=sort_order.asc&select=*`,
+        {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
-      if (featuresError) throw featuresError;
+      const features = featuresResponse.ok ? await featuresResponse.json() : [];
 
       // Fetch FAQs
-      const { data: faqs, error: faqsError } = await supabase
-        .from('program_faqs')
-        .select('*')
-        .eq('program_id', programId)
-        .order('sort_order');
+      const faqsResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/program_faqs?program_id=eq.${programId}&order=sort_order.asc&select=*`,
+        {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
-      if (faqsError) throw faqsError;
+      const faqs = faqsResponse.ok ? await faqsResponse.json() : [];
 
       // Prepare features and outcomes
-      const programFeatures = features?.filter((f) => f.feature_type === 'feature') || [];
-      const programOutcomes = features?.filter((f) => f.feature_type === 'outcome') || [];
+      const programFeatures = features?.filter((f: any) => f.feature_type === 'feature') || [];
+      const programOutcomes = features?.filter((f: any) => f.feature_type === 'outcome') || [];
 
-      // Reset form with all data at once
+      // Reset form with all data
       reset({
         title: program.title,
         short_title: program.short_title,
@@ -199,13 +232,13 @@ const ProgramForm: React.FC = () => {
         featured: program.featured,
         sort_order: program.sort_order,
         features: programFeatures.length > 0
-          ? programFeatures.map((f) => ({ text: f.feature_text }))
+          ? programFeatures.map((f: any) => ({ text: f.feature_text }))
           : [{ text: '' }],
         outcomes: programOutcomes.length > 0
-          ? programOutcomes.map((f) => ({ text: f.feature_text }))
+          ? programOutcomes.map((f: any) => ({ text: f.feature_text }))
           : [{ text: '' }],
         faqs: faqs && faqs.length > 0
-          ? faqs.map((f) => ({ question: f.question, answer: f.answer }))
+          ? faqs.map((f: any) => ({ question: f.question, answer: f.answer }))
           : [{ question: '', answer: '' }],
       });
 
@@ -214,20 +247,28 @@ const ProgramForm: React.FC = () => {
         setExistingImageUrl(program.image_url);
         setImagePreview(program.image_url);
       }
+
+      console.log('✅ [ProgramForm] Form data loaded successfully');
     } catch (err) {
-      console.error('Error loading program:', err);
+      console.error('❌ [ProgramForm] Error loading program:', err);
       showNotification('error', 'Program yüklenirken bir hata oluştu');
     } finally {
       setInitialLoading(false);
     }
-  }, []);
+  }, [reset, session?.access_token]);
 
   // Load data only once on mount
   useEffect(() => {
-    if (isEditMode && id) {
+    console.log('📝 [ProgramForm] Component mounted, isEditMode:', isEditMode, 'id:', id);
+    if (isEditMode && id && session?.access_token) {
       loadProgramData(id);
+    } else if (isEditMode && !session?.access_token) {
+      console.error('❌ [ProgramForm] No access token for edit mode');
+      setInitialLoading(false);
+    } else {
+      setInitialLoading(false);
     }
-  }, [id, isEditMode, loadProgramData]);
+  }, [id, isEditMode, session?.access_token, loadProgramData]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -275,27 +316,67 @@ const ProgramForm: React.FC = () => {
     setTimeout(() => setNotification(null), 5000);
   };
 
-  const onSubmit = async (data: ProgramFormData) => {
+  const uploadImage = async (file: File, programId: string): Promise<string> => {
     try {
-      setLoading(true);
+      console.log('📤 [ProgramForm] Uploading image...');
+      
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileName = `${programId}-${Date.now()}.${fileExt}`;
+      
+      const formData = new FormData();
+      formData.append('file', file);
 
-      // Generate slug from title
-      const slug = generateSlug(data.title);
+      const uploadResponse = await fetch(
+        `${SUPABASE_URL}/storage/v1/object/program-images/${fileName}`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session?.access_token}`,
+          },
+          body: formData,
+        }
+      );
 
-      // Check if slug already exists (FIXED: Handle create mode properly)
-      let query = supabase
-        .from('programs')
-        .select('id')
-        .eq('slug', slug);
-
-      // Only add ID filter in edit mode
-      if (isEditMode && id) {
-        query = query.neq('id', id);
+      if (!uploadResponse.ok) {
+        throw new Error('Resim yüklenemedi');
       }
 
-      const { data: existingProgram } = await query.single();
+      const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/program-images/${fileName}`;
+      console.log('✅ [ProgramForm] Image uploaded:', publicUrl);
+      return publicUrl;
+    } catch (err) {
+      console.error('❌ [ProgramForm] Upload error:', err);
+      throw err;
+    }
+  };
 
-      if (existingProgram) {
+  const onSubmit = async (data: ProgramFormData) => {
+    if (!session?.access_token) {
+      toast.error('Oturum bilgisi bulunamadı');
+      return;
+    }
+
+    try {
+      console.log('💾 [ProgramForm] Saving program...');
+      setLoading(true);
+
+      const slug = generateSlug(data.title);
+
+      // Check if slug exists
+      const slugCheckResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/programs?slug=eq.${slug}&select=id${isEditMode && id ? `&id=neq.${id}` : ''}`,
+        {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const existingPrograms = await slugCheckResponse.json();
+      if (existingPrograms && existingPrograms.length > 0) {
         showNotification('error', 'Bu başlıkla bir program zaten mevcut');
         setLoading(false);
         return;
@@ -308,12 +389,11 @@ const ProgramForm: React.FC = () => {
         try {
           setUploadProgress(50);
           const tempId = id || 'temp-' + Date.now();
-          imageUrl = await uploadProgramImage(imageFile, tempId);
+          imageUrl = await uploadImage(imageFile, tempId);
           setUploadProgress(100);
         } catch (err) {
-          console.error('Error uploading image:', err);
-          const errorMessage = err instanceof Error ? err.message : 'Resim yüklenirken bir hata oluştu';
-          showNotification('error', errorMessage);
+          console.error('❌ [ProgramForm] Image upload failed:', err);
+          showNotification('error', 'Resim yüklenirken bir hata oluştu');
           setLoading(false);
           return;
         }
@@ -345,36 +425,145 @@ const ProgramForm: React.FC = () => {
 
       if (isEditMode && id) {
         // Update existing program
-        await updateProgram(id, programData);
+        const updateResponse = await fetch(
+          `${SUPABASE_URL}/rest/v1/programs?id=eq.${id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation',
+            },
+            body: JSON.stringify(programData),
+          }
+        );
+
+        if (!updateResponse.ok) {
+          throw new Error('Program güncellenemedi');
+        }
+
         programId = id;
 
         // Delete existing features and FAQs
-        await supabase.from('program_features').delete().eq('program_id', id);
-        await supabase.from('program_faqs').delete().eq('program_id', id);
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/program_features?program_id=eq.${id}`,
+          {
+            method: 'DELETE',
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          }
+        );
+
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/program_faqs?program_id=eq.${id}`,
+          {
+            method: 'DELETE',
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          }
+        );
       } else {
         // Create new program
-        const newProgram = await createProgram(programData);
-        programId = newProgram.id;
+        const createResponse = await fetch(
+          `${SUPABASE_URL}/rest/v1/programs`,
+          {
+            method: 'POST',
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation',
+            },
+            body: JSON.stringify(programData),
+          }
+        );
+
+        if (!createResponse.ok) {
+          throw new Error('Program oluşturulamadı');
+        }
+
+        const newProgram = await createResponse.json();
+        programId = newProgram[0].id;
       }
 
       // Add features
       const features = data.features.filter((f) => f.text.trim());
-      for (let i = 0; i < features.length; i++) {
-        await addProgramFeature(programId, features[i].text, 'feature', i);
+      if (features.length > 0) {
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/program_features`,
+          {
+            method: 'POST',
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(
+              features.map((f, i) => ({
+                program_id: programId,
+                feature_text: f.text,
+                feature_type: 'feature',
+                sort_order: i,
+              }))
+            ),
+          }
+        );
       }
 
       // Add outcomes
       const outcomes = data.outcomes.filter((o) => o.text.trim());
-      for (let i = 0; i < outcomes.length; i++) {
-        await addProgramFeature(programId, outcomes[i].text, 'outcome', i);
+      if (outcomes.length > 0) {
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/program_features`,
+          {
+            method: 'POST',
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(
+              outcomes.map((o, i) => ({
+                program_id: programId,
+                feature_text: o.text,
+                feature_type: 'outcome',
+                sort_order: i,
+              }))
+            ),
+          }
+        );
       }
 
       // Add FAQs
       const faqs = data.faqs.filter((f) => f.question.trim() && f.answer.trim());
-      for (let i = 0; i < faqs.length; i++) {
-        await addProgramFAQ(programId, faqs[i].question, faqs[i].answer, i);
+      if (faqs.length > 0) {
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/program_faqs`,
+          {
+            method: 'POST',
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(
+              faqs.map((f, i) => ({
+                program_id: programId,
+                question: f.question,
+                answer: f.answer,
+                sort_order: i,
+              }))
+            ),
+          }
+        );
       }
 
+      console.log('✅ [ProgramForm] Program saved successfully');
       showNotification(
         'success',
         isEditMode ? 'Program başarıyla güncellendi' : 'Program başarıyla oluşturuldu'
@@ -384,7 +573,7 @@ const ProgramForm: React.FC = () => {
         navigate('/admin/programs');
       }, 1500);
     } catch (err) {
-      console.error('Error saving program:', err);
+      console.error('❌ [ProgramForm] Save error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Program kaydedilirken bir hata oluştu';
       showNotification('error', errorMessage);
     } finally {
@@ -398,6 +587,8 @@ const ProgramForm: React.FC = () => {
       navigate('/admin/programs');
     }
   };
+
+  console.log('📝 [ProgramForm] Rendering, initialLoading:', initialLoading, 'loading:', loading);
 
   // Show loading spinner while fetching data in edit mode
   if (initialLoading) {
@@ -510,18 +701,22 @@ const ProgramForm: React.FC = () => {
                   Yaş Grubu <span className="text-red-500">*</span>
                 </Label>
                 <Select
-                  value={ageGroup}
-                  onValueChange={(value) =>
-                    setValue('age_group', value as '0-2' | '2-5' | '5-10')
-                  }
+                  value={watch('age_group')}
+                  onValueChange={(value) => setValue('age_group', value)}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Yaş grubu seçin" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="0-2">0-2 Yaş</SelectItem>
-                    <SelectItem value="2-5">2-5 Yaş</SelectItem>
-                    <SelectItem value="5-10">5-10 Yaş</SelectItem>
+                    {ageGroupsLoading ? (
+                      <div className="p-2 text-center text-sm text-gray-500">Yükleniyor...</div>
+                    ) : (
+                      ageGroups.map((group) => (
+                        <SelectItem key={group.id} value={group.value}>
+                          {group.label}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>

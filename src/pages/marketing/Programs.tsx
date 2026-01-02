@@ -1,21 +1,39 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Clock, Users, Award, ChevronRight, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { usePrograms } from '@/hooks/usePrograms';
+import { useAgeGroups } from '@/hooks/useAgeGroups';
 
 const Programs: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [selectedAge, setSelectedAge] = useState<string>('all');
-  const { programs, loading, error, refetch } = usePrograms('active');
+  
+  const { programs, loading: programsLoading, error, refetch } = usePrograms('active');
+  const { ageGroups, loading: ageGroupsLoading } = useAgeGroups();
 
-  const ageFilters = [
-    { value: 'all', label: 'Tüm Yaşlar' },
-    { value: '0-2', label: '0-2 Yaş' },
-    { value: '2-5', label: '2-5 Yaş' },
-    { value: '5-10', label: '5-10 Yaş' },
-  ];
+  // URL'den gelen age parametresini kontrol et
+  useEffect(() => {
+    const ageParam = searchParams.get('age');
+    if (ageParam) {
+      setSelectedAge(ageParam);
+    }
+  }, [searchParams]);
+
+  // Dinamik yaş filtrelerini oluştur
+  const ageFilters = useMemo(() => {
+    const filters = ageGroups.map(group => ({
+      value: group.value,
+      label: group.label
+    }));
+    
+    return [
+      { value: 'all', label: 'Tüm Yaşlar' },
+      ...filters
+    ];
+  }, [ageGroups]);
 
   const filteredPrograms = selectedAge === 'all' 
     ? programs 
@@ -27,7 +45,7 @@ const Programs: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (loading) {
+  if (programsLoading || ageGroupsLoading) {
     return (
       <div className="bg-[var(--bg)] min-h-screen flex items-center justify-center">
         <div className="text-center">

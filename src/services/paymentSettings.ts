@@ -1,4 +1,3 @@
-import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 
 export interface PaymentMethod {
@@ -29,59 +28,90 @@ export interface IyzilinkConfig {
 }
 
 /**
- * Get all payment methods (admin only)
+ * Get all payment methods (admin only) - DIRECT FETCH VERSION
  */
 export async function getAllPaymentMethods(): Promise<PaymentMethod[]> {
   try {
-    console.log('🔵 Fetching all payment methods...');
+    console.log('🔵 [PaymentSettings] Fetching all payment methods with direct fetch...');
 
-    const { data, error } = await supabase
-      .from('payment_settings')
-      .select('*')
-      .order('payment_method');
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-    if (error) {
-      console.error('❌ Error fetching payment methods:', error);
-      throw error;
+    const url = `${supabaseUrl}/rest/v1/payment_settings?order=payment_method.asc`;
+    
+    console.log('🔵 [PaymentSettings] Fetching from:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+      }
+    });
+
+    console.log('🔵 [PaymentSettings] Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [PaymentSettings] HTTP Error:', response.status, errorText);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
 
-    console.log('✅ Payment methods fetched:', data?.length || 0);
+    const data = await response.json();
+    console.log('✅ [PaymentSettings] Payment methods fetched:', data?.length || 0);
+    
     return data || [];
   } catch (error: any) {
-    console.error('❌ Failed to fetch payment methods:', error);
+    console.error('❌ [PaymentSettings] Failed to fetch payment methods:', error);
     toast.error('Ödeme yöntemleri yüklenemedi');
     return [];
   }
 }
 
 /**
- * Get active payment methods (public - for checkout page)
+ * Get active payment methods (public - for checkout page) - DIRECT FETCH VERSION
  */
 export async function getActivePaymentMethods(): Promise<PaymentMethod[]> {
   try {
-    console.log('🔵 Fetching active payment methods...');
+    console.log('🔵 [PaymentSettings] Fetching active payment methods with direct fetch...');
 
-    const { data, error } = await supabase
-      .from('payment_settings')
-      .select('*')
-      .eq('is_active', true)
-      .order('payment_method');
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-    if (error) {
-      console.error('❌ Error fetching active payment methods:', error);
-      throw error;
+    const url = `${supabaseUrl}/rest/v1/payment_settings?is_active=eq.true&order=payment_method.asc`;
+    
+    console.log('🔵 [PaymentSettings] Fetching from:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+      }
+    });
+
+    console.log('🔵 [PaymentSettings] Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [PaymentSettings] HTTP Error:', response.status, errorText);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
 
-    console.log('✅ Active payment methods fetched:', data?.length || 0);
+    const data = await response.json();
+    console.log('✅ [PaymentSettings] Active payment methods fetched:', data?.length || 0, data);
+    
     return data || [];
   } catch (error: any) {
-    console.error('❌ Failed to fetch active payment methods:', error);
+    console.error('❌ [PaymentSettings] Failed to fetch active payment methods:', error);
     return [];
   }
 }
 
 /**
- * Update payment method configuration
+ * Update payment method configuration - DIRECT FETCH VERSION
  */
 export async function updatePaymentMethod(
   id: string,
@@ -91,45 +121,58 @@ export async function updatePaymentMethod(
   }
 ): Promise<boolean> {
   try {
-    console.log('🔵 Updating payment method:', id);
+    console.log('🔵 [PaymentSettings] Updating payment method:', id);
 
-    // Check current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    // Get auth token from localStorage (Zustand persist)
+    const authStorage = localStorage.getItem('auth-storage');
+    let accessToken = supabaseKey; // fallback to anon key
     
-    if (userError || !user) {
-      toast.error('Oturum açmanız gerekiyor');
+    if (authStorage) {
+      try {
+        const parsed = JSON.parse(authStorage);
+        if (parsed.state?.user?.access_token) {
+          accessToken = parsed.state.user.access_token;
+          console.log('🔵 [PaymentSettings] Using user access token');
+        }
+      } catch (e) {
+        console.warn('⚠️ [PaymentSettings] Could not parse auth storage');
+      }
+    }
+
+    const url = `${supabaseUrl}/rest/v1/payment_settings?id=eq.${id}`;
+    
+    console.log('🔵 [PaymentSettings] Updating at:', url);
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(updates)
+    });
+
+    console.log('🔵 [PaymentSettings] Update response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [PaymentSettings] Update error:', response.status, errorText);
+      toast.error(`Güncelleme hatası: ${response.status}`);
       return false;
     }
 
-    // Check user role
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (profileError || profile?.role !== 'admin') {
-      toast.error('Bu işlem için yetkiniz yok');
-      return false;
-    }
-
-    // Perform update
-    const { data, error } = await supabase
-      .from('payment_settings')
-      .update(updates)
-      .eq('id', id)
-      .select();
-
-    if (error) {
-      console.error('❌ Error updating payment method:', error);
-      toast.error(`Güncelleme hatası: ${error.message}`);
-      throw error;
-    }
-
+    const data = await response.json();
+    console.log('✅ [PaymentSettings] Payment method updated:', data);
+    
     toast.success('Ödeme yöntemi güncellendi');
     return true;
   } catch (error: any) {
-    console.error('❌ Failed to update payment method:', error);
+    console.error('❌ [PaymentSettings] Failed to update payment method:', error);
     toast.error(`Ödeme yöntemi güncellenemedi: ${error.message || 'Bilinmeyen hata'}`);
     return false;
   }

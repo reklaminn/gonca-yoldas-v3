@@ -18,7 +18,7 @@ import SEO from '@/components/SEO';
 import { createOrder } from '@/services/orders';
 import { getActivePaymentMethods, type PaymentMethod, type BankTransferConfig } from '@/services/paymentSettings';
 import { isInvoiceEnabled, shouldShowPricesWithVAT } from '@/services/generalSettings';
-import { supabase } from '@/lib/supabaseClient';
+import { useAuthStore } from '@/store/authStore';
 import type { Program } from '@/hooks/usePrograms';
 
 // --- Helpers ---
@@ -27,15 +27,23 @@ const validatePhone = (phone: string) => /^5\d{9}$/.test(phone.replace(/\D/g, ''
 const validateTC = (tc: string) => /^[1-9][0-9]{10}$/.test(tc);
 
 const Checkout: React.FC = () => {
+  console.log('🛒 [Checkout] Component rendering...');
+  
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const programSlug = searchParams.get('program');
+  
+  // ✅ FIX: Get user from Zustand, extract email from user object
+  const { user } = useAuthStore();
+  const userEmail = user?.email || '';
+
+  console.log('🛒 [Checkout] Program slug from URL:', programSlug);
+  console.log('🛒 [Checkout] Auth state:', { hasUser: !!user, userEmail });
 
   const [program, setProgram] = useState<Program | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('credit_card');
   const [invoiceSystemEnabled, setInvoiceSystemEnabled] = useState(true);
@@ -43,7 +51,7 @@ const Checkout: React.FC = () => {
 
   const [formData, setFormData] = useState({
     fullName: '',
-    email: '',
+    email: userEmail || '',
     phone: '',
     customerType: 'individual' as 'individual' | 'corporate',
     tcNo: '',
@@ -80,39 +88,102 @@ const Checkout: React.FC = () => {
   }
 
   useEffect(() => {
+    console.log('🛒 [Checkout] useEffect triggered');
+    
     const init = async () => {
+      console.log('🛒 [Checkout] init() function started');
+      
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          setIsAuthenticated(true);
-          setFormData(prev => ({ ...prev, email: session.user.email || '' }));
+        console.log('🛒 [Checkout] Step 1: Starting initialization...');
+        
+        // ✅ FIX: Use userEmail from user object
+        console.log('🛒 [Checkout] Step 2: Using user email from Zustand');
+        if (userEmail) {
+          setFormData(prev => ({ ...prev, email: userEmail }));
+          console.log('🛒 [Checkout] User email set from Zustand:', userEmail);
         }
 
+        console.log('🛒 [Checkout] Step 3: Checking program slug...');
         if (!programSlug) {
+          console.warn('🛒 [Checkout] No program slug, redirecting to /programs');
           navigate('/programs');
           return;
         }
 
-        const { data: prog } = await supabase.from('programs').select('*').eq('slug', programSlug).eq('status', 'active').single();
-        if (!prog) throw new Error('Program not found');
+        console.log('🛒 [Checkout] Step 4: Fetching program:', programSlug);
+        
+        // Direct fetch to Supabase REST API
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        
+        console.log('🛒 [Checkout] Step 5: Supabase config:', { 
+          url: supabaseUrl, 
+          hasKey: !!supabaseKey 
+        });
+        
+        const url = `${supabaseUrl}/rest/v1/programs?slug=eq.${encodeURIComponent(programSlug)}&status=eq.active`;
+        
+        console.log('🛒 [Checkout] Step 6: Fetching from:', url);
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+          }
+        });
+        
+        console.log('🛒 [Checkout] Step 7: Response status:', response.status);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('🛒 [Checkout] HTTP Error:', response.status, errorText);
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+        
+        const data = await response.json();
+        console.log('🛒 [Checkout] Step 8: Program data received:', data);
+        
+        if (!data || data.length === 0) {
+          console.error('🛒 [Checkout] Program not found in response');
+          throw new Error('Program not found');
+        }
+        
+        const prog = data[0];
+        console.log('🛒 [Checkout] Step 9: Program loaded:', prog.title);
         setProgram(prog);
 
+        console.log('🛒 [Checkout] Step 10: Fetching payment methods...');
         const methods = await getActivePaymentMethods();
+        console.log('🛒 [Checkout] Step 11: Payment methods received:', methods.length);
         setPaymentMethods(methods);
-        if (methods.length > 0) setSelectedPaymentMethod(methods[0].payment_method);
+        if (methods.length > 0) {
+          setSelectedPaymentMethod(methods[0].payment_method);
+          console.log('🛒 [Checkout] Default payment method set:', methods[0].payment_method);
+        }
 
+        console.log('🛒 [Checkout] Step 12: Fetching settings...');
         const [inv, vat] = await Promise.all([isInvoiceEnabled(), shouldShowPricesWithVAT()]);
+        console.log('🛒 [Checkout] Step 13: Settings received - Invoice:', inv, 'VAT:', vat);
         setInvoiceSystemEnabled(inv);
         setShowPricesWithVAT(vat);
 
+        console.log('🛒 [Checkout] Step 14: Setting loading to false');
         setIsLoading(false);
+        console.log('🛒 [Checkout] ✅ Initialization complete!');
       } catch (err) {
+        console.error('🛒 [Checkout] ❌ Error in init():', err);
+        console.error('🛒 [Checkout] Error stack:', err instanceof Error ? err.stack : 'No stack');
         toast.error('Veriler yüklenirken bir hata oluştu.');
         setIsLoading(false);
       }
     };
+    
+    console.log('🛒 [Checkout] About to call init()...');
     init();
-  }, [programSlug, navigate]);
+    console.log('🛒 [Checkout] init() called (async, will continue in background)');
+  }, [programSlug, navigate, userEmail]);
 
   const validateField = (field: string, value: any): string => {
     switch (field) {
@@ -216,8 +287,23 @@ const Checkout: React.FC = () => {
     }
   };
 
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]"><Loader2 className="animate-spin text-[var(--color-primary)]" /></div>;
-  if (!program) return null;
+  console.log('🛒 [Checkout] Render state:', { isLoading, hasProgram: !!program, programSlug });
+
+  if (isLoading) {
+    console.log('🛒 [Checkout] Showing loading spinner...');
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <Loader2 className="animate-spin text-[var(--color-primary)]" />
+      </div>
+    );
+  }
+  
+  if (!program) {
+    console.log('🛒 [Checkout] No program found, returning null');
+    return null;
+  }
+
+  console.log('🛒 [Checkout] Rendering checkout form...');
 
   const bankConfig = paymentMethods.find(m => m.payment_method === 'bank_transfer')?.config as BankTransferConfig;
 
@@ -271,7 +357,7 @@ const Checkout: React.FC = () => {
                           placeholder="ornek@mail.com"
                           value={formData.email} 
                           onChange={e => handleInputChange('email', e.target.value)} 
-                          disabled={isAuthenticated}
+                          disabled={!!userEmail}
                         />
                       </div>
                     </div>

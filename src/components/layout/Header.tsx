@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAuthStore } from '@/store/authStore'; // Corrected: Use Zustand store
+import { useAuthStore } from '@/store/authStore';
 import ThemeToggle from '@/components/theme/ThemeToggle';
 import TopBanner from './TopBanner';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -11,18 +11,27 @@ import { useTheme } from '@/contexts/ThemeContext';
 const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [logoError, setLogoError] = useState(false);
-  const { user, loading } = useAuthStore(); // Corrected: Use Zustand store
+  const { user, profile, loading } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const { resolvedTheme } = useTheme();
 
+  // ✅ Profile'dan role kontrolü
+  const isAdmin = profile?.role === 'admin';
+
   useEffect(() => {
-    console.log('🔵 Header: Auth state', { user: user?.email || 'none', loading });
-  }, [user, loading]);
+    console.log('🔍 [Header] Auth State from Zustand:', {
+      hasUser: !!user,
+      userEmail: user?.email,
+      profileRole: profile?.role,
+      isAdmin,
+      loading
+    });
+  }, [user, profile, isAdmin, loading]);
 
   const navigation = [
     { name: 'Ana Sayfa', href: '/' },
-    { name: 'Programlar', href: '/programs' },
+    { name: 'Eğitimler', href: '/programs' },
     { name: 'Öğrenme Platformu', href: '/learning-platform' },
     { name: 'Blog', href: '/blog' },
     { name: 'Hakkımızda', href: '/about' },
@@ -37,7 +46,7 @@ const Header: React.FC = () => {
   };
 
   const handleNavigation = (href: string) => {
-    console.log('🔵 Navigating to:', href);
+    console.log('🔵 [Header] Navigating to:', href);
     navigate(href);
     setIsMenuOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -137,10 +146,10 @@ const Header: React.FC = () => {
               {!loading && (
                 user ? (
                   <Button
-                    onClick={() => handleNavigation('/dashboard')}
+                    onClick={() => handleNavigation(isAdmin ? '/admin' : '/dashboard')}
                     className="btn-primary"
                   >
-                    Panelim
+                    {isAdmin ? 'Admin Panel' : 'Panelim'}
                   </Button>
                 ) : (
                   <>
@@ -203,7 +212,6 @@ const Header: React.FC = () => {
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            console.log('🔵 Mobile menu clicked:', item.name, item.href);
                             handleNavigation(item.href);
                           }}
                           aria-current={isActive ? 'page' : undefined}
@@ -222,10 +230,10 @@ const Header: React.FC = () => {
                     <div className="flex flex-col space-y-2 px-4 pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
                       {user ? (
                         <Button
-                          onClick={() => handleNavigation('/dashboard')}
+                          onClick={() => handleNavigation(isAdmin ? '/admin' : '/dashboard')}
                           className="btn-primary w-full"
                         >
-                          Panelim
+                          {isAdmin ? 'Admin Panel' : 'Panelim'}
                         </Button>
                       ) : (
                         <>

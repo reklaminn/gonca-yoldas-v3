@@ -140,9 +140,6 @@ const LearningPlatform: React.FC = () => {
               <Button size="lg" className="text-lg px-8 py-6 bg-gradient-primary text-white font-poppins font-semibold hover:shadow-soft-lg transition-all duration-200 hover:scale-105 rounded-lg">
                 Platformu Keşfet
               </Button>
-              <Button size="lg" variant="outline" className="text-lg px-8 py-6 border-[var(--border)] text-[var(--fg)] hover:bg-[var(--bg-elev)] font-poppins font-semibold transition-all duration-200 hover:scale-105 rounded-lg">
-                Demo İzle
-              </Button>
             </div>
           </div>
         </motion.section>

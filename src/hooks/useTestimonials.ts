@@ -16,6 +16,36 @@ export interface Testimonial {
   updated_at: string;
 }
 
+// Direct fetch to Supabase REST API (bypasses JS client issues)
+async function fetchFromSupabase(tableName: string, query: string): Promise<any> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  const url = `${supabaseUrl}/rest/v1/${tableName}?${query}`;
+  
+  console.log(`🌐 [useTestimonials] Fetching from: ${tableName}`);
+  
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'apikey': supabaseKey,
+      'Authorization': `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    }
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('❌ [useTestimonials] HTTP Error:', response.status, errorText);
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+  
+  const data = await response.json();
+  console.log(`✅ [useTestimonials] Success, ${tableName} items:`, data?.length || 0);
+  return data;
+}
+
 export function useTestimonials(activeOnly: boolean = false) {
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,26 +53,6 @@ export function useTestimonials(activeOnly: boolean = false) {
 
   useEffect(() => {
     fetchTestimonials();
-
-    // Real-time subscription
-    const channel = supabase
-      .channel('parent_testimonials_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'parent_testimonials',
-        },
-        () => {
-          fetchTestimonials();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, [activeOnly]);
 
   const fetchTestimonials = async () => {
@@ -50,29 +60,27 @@ export function useTestimonials(activeOnly: boolean = false) {
       setLoading(true);
       setError(null);
 
-      let query = supabase
-        .from('parent_testimonials')
-        .select('*')
-        .order('display_order', { ascending: true })
-        .order('created_at', { ascending: false });
+      console.log('🔍 [useTestimonials] Fetching testimonials, activeOnly:', activeOnly);
+
+      let query = 'order=display_order.asc,created_at.desc';
 
       if (activeOnly) {
-        query = query.eq('is_active', true);
+        query += '&is_active=eq.true';
       }
 
-      const { data, error: fetchError } = await query;
+      const data = await fetchFromSupabase('parent_testimonials', query);
 
-      if (fetchError) throw fetchError;
-
+      console.log('✅ [useTestimonials] Testimonials fetched:', data?.length || 0);
       setTestimonials(data || []);
     } catch (err) {
-      console.error('Error fetching testimonials:', err);
+      console.error('❌ [useTestimonials] Error:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch testimonials');
     } finally {
       setLoading(false);
     }
   };
 
+  // Keep using Supabase client for mutations (admin operations)
   const createTestimonial = async (testimonial: Omit<Testimonial, 'id' | 'created_at' | 'updated_at' | 'display_order'>) => {
     const maxOrder = Math.max(...testimonials.map(t => t.display_order), 0);
 
@@ -83,6 +91,7 @@ export function useTestimonials(activeOnly: boolean = false) {
       .single();
 
     if (error) throw error;
+    await fetchTestimonials(); // Refresh list
     return data;
   };
 
@@ -95,6 +104,7 @@ export function useTestimonials(activeOnly: boolean = false) {
       .single();
 
     if (error) throw error;
+    await fetchTestimonials(); // Refresh list
     return data;
   };
 
@@ -105,6 +115,7 @@ export function useTestimonials(activeOnly: boolean = false) {
       .eq('id', id);
 
     if (error) throw error;
+    await fetchTestimonials(); // Refresh list
   };
 
   const reorderTestimonials = async (newOrder: Testimonial[]) => {

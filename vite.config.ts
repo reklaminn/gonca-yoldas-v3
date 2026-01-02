@@ -11,6 +11,9 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    hmr: {
+      overlay: true,
+    },
   },
   build: {
     chunkSizeWarningLimit: 1000,
@@ -20,11 +23,13 @@ export default defineConfig({
           if (id.includes('node_modules')) {
             if (id.includes('lucide-react')) return 'icons';
             if (id.includes('recharts')) return 'charts';
-            // Supabase'i buradan çıkardık, vendor içinde kalsın
             return 'vendor';
           }
         },
       },
     },
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom'],
   },
 });

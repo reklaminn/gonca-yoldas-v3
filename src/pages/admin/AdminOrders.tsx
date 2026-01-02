@@ -46,10 +46,12 @@ import {
   FileText,
   RefreshCw
 } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
+import { useAuthStore } from '@/store/authStore';
 
 const SHOW_ORDER_AMOUNTS = import.meta.env.VITE_SHOW_ORDER_AMOUNTS === 'true';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 interface Order {
   id: string;
@@ -83,42 +85,94 @@ const AdminOrders: React.FC = () => {
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  
+  const { session } = useAuthStore(); // ✅ Session'dan access_token al
 
   useEffect(() => {
     fetchOrders();
   }, []);
 
   const fetchOrders = async () => {
+    console.log('🔵 [AdminOrders] Fetching orders with direct fetch API...');
+    
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .order('created_at', { ascending: false });
+      
+      if (!session?.access_token) {
+        console.error('❌ [AdminOrders] No access token available');
+        toast.error('Oturum bilgisi bulunamadı');
+        return;
+      }
 
-      if (error) throw error;
+      console.log('✅ [AdminOrders] Access token available, fetching...');
+
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/orders?select=*&order=created_at.desc`,
+        {
+          method: 'GET',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`, // ✅ Session'dan token
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [AdminOrders] Fetch failed:', response.status, errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ [AdminOrders] Orders fetched:', data.length);
+      
       setOrders(data || []);
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-      toast.error('Siparişler yüklenirken hata oluştu');
+    } catch (error: any) {
+      console.error('❌ [AdminOrders] Error fetching orders:', error);
+      toast.error('Siparişler yüklenirken hata oluştu: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
   const updateOrderStatus = async (orderId: string, newStatus: string, field: 'payment_status' | 'status') => {
+    console.log(`🔵 [AdminOrders] Updating order ${orderId} ${field} to ${newStatus}`);
+    
     try {
       setIsUpdating(true);
-      const { error } = await supabase
-        .from('orders')
-        .update({ [field]: newStatus })
-        .eq('id', orderId);
+      
+      if (!session?.access_token) {
+        toast.error('Oturum bilgisi bulunamadı');
+        return;
+      }
 
-      if (error) throw error;
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify({ [field]: newStatus }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [AdminOrders] Update failed:', response.status, errorText);
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      console.log('✅ [AdminOrders] Order updated successfully');
       
       setOrders(orders.map(o => o.id === orderId ? { ...o, [field]: newStatus } : o));
       toast.success('Sipariş durumu güncellendi');
-    } catch (error) {
+    } catch (error: any) {
+      console.error('❌ [AdminOrders] Update error:', error);
       toast.error('Güncelleme sırasında hata oluştu');
     } finally {
       setIsUpdating(false);
@@ -126,17 +180,38 @@ const AdminOrders: React.FC = () => {
   };
 
   const deleteOrder = async (orderId: string) => {
+    console.log(`🔵 [AdminOrders] Deleting order ${orderId}`);
+    
     try {
-      const { error } = await supabase
-        .from('orders')
-        .delete()
-        .eq('id', orderId);
+      if (!session?.access_token) {
+        toast.error('Oturum bilgisi bulunamadı');
+        return;
+      }
 
-      if (error) throw error;
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [AdminOrders] Delete failed:', response.status, errorText);
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      console.log('✅ [AdminOrders] Order deleted successfully');
       
       setOrders(orders.filter(o => o.id !== orderId));
       toast.success('Sipariş silindi');
-    } catch (error) {
+    } catch (error: any) {
+      console.error('❌ [AdminOrders] Delete error:', error);
       toast.error('Sipariş silinirken hata oluştu');
     }
   };

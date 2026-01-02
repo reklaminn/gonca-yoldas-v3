@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,64 +13,104 @@ import {
   FileText,
   AlertCircle,
   ArrowUpRight,
-  CheckCircle,
+  ArrowDownRight,
   Clock,
+  CheckCircle,
   XCircle,
   Loader2
 } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
+import { useAuthStore } from '@/store/authStore';
+import { toast } from 'sonner';
 
 const SHOW_ORDER_AMOUNTS = import.meta.env.VITE_SHOW_ORDER_AMOUNTS === 'true';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+interface DashboardStats {
+  totalUsers: number;
+  totalOrders: number;
+  completedOrders: number;
+  totalRevenue: number;
+}
 
 const AdminDashboard: React.FC = () => {
-  const [stats, setStats] = useState({
+  console.log('🎯 [AdminDashboard] Component mounting...');
+
+  const [stats, setStats] = useState<DashboardStats>({
     totalUsers: 0,
-    totalPrograms: 0,
     totalOrders: 0,
-    totalRevenue: 0,
     completedOrders: 0,
-    pendingOrders: 0
+    totalRevenue: 0,
   });
+  const [recentOrders, setRecentOrders] = useState<any[]>([]);
+  const [recentUsers, setRecentUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { session } = useAuthStore(); // ✅ Session'dan access_token al
 
   useEffect(() => {
-    fetchStats();
+    fetchDashboardData();
   }, []);
 
-  const fetchStats = async () => {
+  const fetchDashboardData = async () => {
+    console.log('🔵 [AdminDashboard] Fetching dashboard data...');
+    
     try {
       setLoading(true);
+      
+      if (!session?.access_token) {
+        console.error('❌ [AdminDashboard] No access token');
+        toast.error('Oturum bilgisi bulunamadı');
+        return;
+      }
 
-      // Fetch users count
-      const { count: usersCount } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true });
+      console.log('✅ [AdminDashboard] Access token available, fetching...');
 
-      // Fetch programs count
-      const { count: programsCount } = await supabase
-        .from('programs')
-        .select('*', { count: 'exact', head: true });
+      // Fetch users
+      const usersResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?select=*`,
+        {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        }
+      );
+      const usersData = await usersResponse.json();
 
       // Fetch orders
-      const { data: orders } = await supabase
-        .from('orders')
-        .select('payment_status, total_amount');
+      const ordersResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/orders?select=*&order=created_at.desc`,
+        {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        }
+      );
+      const ordersData = await ordersResponse.json();
 
-      const totalOrders = orders?.length || 0;
-      const completedOrders = orders?.filter(o => o.payment_status === 'completed').length || 0;
-      const pendingOrders = orders?.filter(o => o.payment_status === 'pending').length || 0;
-      const totalRevenue = orders?.reduce((sum, o) => sum + (o.total_amount || 0), 0) || 0;
+      console.log('✅ [AdminDashboard] Data fetched:', {
+        users: usersData.length,
+        orders: ordersData.length
+      });
+
+      // Calculate stats
+      const completedOrders = ordersData.filter((o: any) => o.payment_status === 'completed');
+      const totalRevenue = completedOrders.reduce((sum: number, o: any) => sum + (o.total_amount || 0), 0);
 
       setStats({
-        totalUsers: usersCount || 0,
-        totalPrograms: programsCount || 0,
-        totalOrders,
+        totalUsers: usersData.length,
+        totalOrders: ordersData.length,
+        completedOrders: completedOrders.length,
         totalRevenue,
-        completedOrders,
-        pendingOrders
       });
-    } catch (error) {
-      console.error('Error fetching stats:', error);
+
+      setRecentOrders(ordersData.slice(0, 4));
+      setRecentUsers(usersData.slice(0, 3));
+
+    } catch (error: any) {
+      console.error('❌ [AdminDashboard] Error:', error);
+      toast.error('Dashboard verileri yüklenirken hata');
     } finally {
       setLoading(false);
     }
@@ -79,25 +119,16 @@ const AdminDashboard: React.FC = () => {
   const statsCards = [
     {
       title: 'Toplam Kullanıcı',
-      value: stats.totalUsers,
+      value: stats.totalUsers.toString(),
       change: '+12.5%',
       trend: 'up',
       icon: Users,
       color: 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400',
-      description: 'Kayıtlı kullanıcı sayısı'
-    },
-    {
-      title: 'Aktif Programlar',
-      value: stats.totalPrograms,
-      change: '+3',
-      trend: 'up',
-      icon: BookOpen,
-      color: 'bg-green-100 dark:bg-green-950 text-green-600 dark:text-green-400',
-      description: 'Yayında olan programlar'
+      description: `${stats.totalUsers} kayıtlı kullanıcı`
     },
     {
       title: 'Toplam Sipariş',
-      value: stats.totalOrders,
+      value: stats.totalOrders.toString(),
       change: '+8.2%',
       trend: 'up',
       icon: ShoppingBag,
@@ -120,24 +151,44 @@ const AdminDashboard: React.FC = () => {
       title: 'Yeni Kullanıcı Ekle',
       description: 'Sisteme manuel kullanıcı ekleyin',
       icon: UserPlus,
-      href: '/admin/students',
-      color: 'bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90'
+      href: '/admin/users/new',
+      color: 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600'
     },
     {
       title: 'Program Oluştur',
       description: 'Yeni eğitim programı ekleyin',
       icon: BookOpen,
-      href: '/admin/programs',
-      color: 'bg-green-600 hover:bg-green-700'
+      href: '/admin/programs/new',
+      color: 'bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600'
     },
     {
-      title: 'İçerik Yönetimi',
-      description: 'Site içeriğini düzenleyin',
+      title: 'Blog Yazısı Yaz',
+      description: 'Yeni blog içeriği oluşturun',
       icon: FileText,
-      href: '/admin/content',
-      color: 'bg-purple-600 hover:bg-purple-700'
+      href: '/admin/blog/new',
+      color: 'bg-purple-600 hover:bg-purple-700 dark:bg-purple-700 dark:hover:bg-purple-600'
     },
   ];
+
+  const getStatusBadge = (status: string) => {
+    const config = {
+      completed: { label: 'Tamamlandı', variant: 'default' as const, icon: CheckCircle },
+      pending: { label: 'Bekliyor', variant: 'secondary' as const, icon: Clock },
+      cancelled: { label: 'İptal', variant: 'destructive' as const, icon: XCircle },
+      failed: { label: 'Başarısız', variant: 'destructive' as const, icon: XCircle },
+      active: { label: 'Aktif', variant: 'default' as const, icon: CheckCircle },
+    };
+
+    const statusConfig = config[status as keyof typeof config] || config.pending;
+    const Icon = statusConfig.icon;
+
+    return (
+      <Badge variant={statusConfig.variant} className="flex items-center gap-1 w-fit">
+        <Icon className="h-3 w-3" />
+        {statusConfig.label}
+      </Badge>
+    );
+  };
 
   if (loading) {
     return (
@@ -150,31 +201,33 @@ const AdminDashboard: React.FC = () => {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-[var(--fg)]">Genel Bakış</h1>
-        <p className="text-[var(--fg-muted)] mt-2">Sistem istatistikleri ve son aktiviteler</p>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Genel Bakış</h1>
+        <p className="text-gray-600 dark:text-gray-400 mt-2">Sistem istatistikleri ve son aktiviteler</p>
       </div>
 
       {/* Stats Grid */}
-      <div className={`grid ${SHOW_ORDER_AMOUNTS ? 'md:grid-cols-2 lg:grid-cols-4' : 'md:grid-cols-3'} gap-6`}>
+      <div className={`grid ${SHOW_ORDER_AMOUNTS ? 'md:grid-cols-2 lg:grid-cols-3' : 'md:grid-cols-2'} gap-6`}>
         {statsCards.map((stat, index) => {
           const Icon = stat.icon;
-          const TrendIcon = ArrowUpRight;
+          const TrendIcon = stat.trend === 'up' ? ArrowUpRight : ArrowDownRight;
 
           return (
-            <Card key={index} className="border-[var(--border)] bg-[var(--bg-card)]">
+            <Card key={index} className="border-gray-200 dark:border-gray-800">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center ${stat.color}`}>
                     <Icon className="h-6 w-6" />
                   </div>
-                  <div className="flex items-center gap-1 text-sm font-semibold text-green-600">
+                  <div className={`flex items-center gap-1 text-sm font-semibold ${
+                    stat.trend === 'up' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  }`}>
                     <TrendIcon className="h-4 w-4" />
                     {stat.change}
                   </div>
                 </div>
-                <h3 className="text-sm text-[var(--fg-muted)] mb-1">{stat.title}</h3>
-                <p className="text-2xl font-bold text-[var(--fg)] mb-1">{stat.value}</p>
-                <p className="text-xs text-[var(--fg-muted)]">{stat.description}</p>
+                <h3 className="text-sm text-gray-600 dark:text-gray-400 mb-1">{stat.title}</h3>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{stat.value}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-500">{stat.description}</p>
               </CardContent>
             </Card>
           );
@@ -187,13 +240,13 @@ const AdminDashboard: React.FC = () => {
           const Icon = action.icon;
           return (
             <Link key={index} to={action.href}>
-              <Card className="hover:shadow-lg transition-all duration-200 cursor-pointer h-full border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--color-primary)]">
+              <Card className="hover:shadow-lg transition-all duration-200 cursor-pointer h-full border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700">
                 <CardContent className="pt-6">
                   <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${action.color} text-white mb-4 transition-transform hover:scale-110`}>
                     <Icon className="h-6 w-6" />
                   </div>
-                  <h3 className="font-bold text-[var(--fg)] mb-2">{action.title}</h3>
-                  <p className="text-sm text-[var(--fg-muted)]">{action.description}</p>
+                  <h3 className="font-bold text-gray-900 dark:text-white mb-2">{action.title}</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">{action.description}</p>
                 </CardContent>
               </Card>
             </Link>
@@ -201,63 +254,88 @@ const AdminDashboard: React.FC = () => {
         })}
       </div>
 
-      {/* Recent Activity */}
       <div className="grid lg:grid-cols-2 gap-8">
-        <Card className="border-[var(--border)] bg-[var(--bg-card)]">
+        {/* Recent Orders */}
+        <Card className="border-gray-200 dark:border-gray-800">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-[var(--fg)]">Son Siparişler</CardTitle>
-                <CardDescription className="text-[var(--fg-muted)]">En son gelen siparişler</CardDescription>
+                <CardTitle className="text-gray-900 dark:text-white">Son Siparişler</CardTitle>
+                <CardDescription className="text-gray-600 dark:text-gray-400">En son gelen siparişler</CardDescription>
               </div>
-              <Button variant="outline" size="sm" asChild>
+              <Button variant="outline" size="sm" asChild className="border-gray-300 dark:border-gray-700">
                 <Link to="/admin/orders">Tümünü Gör</Link>
               </Button>
             </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-[var(--bg-surface)] rounded-lg border border-[var(--border)]">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 mb-2">
-                    <p className="font-semibold text-[var(--fg)]">ORD-2025-001</p>
-                    <Badge className="bg-green-500">Tamamlandı</Badge>
+              {recentOrders.length > 0 ? (
+                recentOrders.map((order) => (
+                  <div key={order.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
+                        <p className="font-semibold text-gray-900 dark:text-white">{order.order_number || order.id.slice(0, 8)}</p>
+                        {getStatusBadge(order.payment_status)}
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-1 truncate">{order.full_name}</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-500 truncate">{order.program_title}</p>
+                    </div>
+                    {SHOW_ORDER_AMOUNTS && (
+                      <div className="text-right ml-4 flex-shrink-0">
+                        <p className="font-bold text-gray-900 dark:text-white mb-1">₺{order.total_amount?.toLocaleString('tr-TR')}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-500">{new Date(order.created_at).toLocaleDateString('tr-TR')}</p>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm text-[var(--fg-muted)]">Baby English Program</p>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <ShoppingBag className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-500">Henüz sipariş yok</p>
                 </div>
-                {SHOW_ORDER_AMOUNTS && (
-                  <div className="text-right ml-4">
-                    <p className="font-bold text-[var(--fg)]">₺2,499</p>
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-[var(--border)] bg-[var(--bg-card)]">
+        {/* Recent Users */}
+        <Card className="border-gray-200 dark:border-gray-800">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-[var(--fg)]">Yeni Kullanıcılar</CardTitle>
-                <CardDescription className="text-[var(--fg-muted)]">Son kayıt olan kullanıcılar</CardDescription>
+                <CardTitle className="text-gray-900 dark:text-white">Yeni Kullanıcılar</CardTitle>
+                <CardDescription className="text-gray-600 dark:text-gray-400">Son kayıt olan kullanıcılar</CardDescription>
               </div>
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/admin/students">Tümünü Gör</Link>
+              <Button variant="outline" size="sm" asChild className="border-gray-300 dark:border-gray-700">
+                <Link to="/admin/users">Tümünü Gör</Link>
               </Button>
             </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="flex items-center gap-4 p-4 bg-[var(--bg-surface)] rounded-lg border border-[var(--border)]">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-400 rounded-full flex items-center justify-center text-white font-bold">
-                  AY
+              {recentUsers.length > 0 ? (
+                recentUsers.map((user) => (
+                  <div key={user.id} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-400 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
+                      {user.full_name?.split(' ').map((n: string) => n[0]).join('') || user.email[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <p className="font-semibold text-gray-900 dark:text-white">{user.full_name || user.email}</p>
+                        {getStatusBadge('active')}
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-1 truncate">{user.email}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-500">{new Date(user.created_at).toLocaleDateString('tr-TR')}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <Users className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-500">Henüz kullanıcı yok</p>
                 </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-[var(--fg)]">Ayşe Yılmaz</p>
-                  <p className="text-sm text-[var(--fg-muted)]">ayse@example.com</p>
-                </div>
-              </div>
+              )}
             </div>
           </CardContent>
         </Card>

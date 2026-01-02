@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   LayoutDashboard, 
@@ -7,12 +7,15 @@ import {
   BookOpen, 
   User,
   X,
-  Home
+  Home,
+  LogOut
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { useAuth } from '@/contexts/AuthContext';
-import { getGeneralSettings } from '@/services/generalSettings'; // Import general settings service
+import { useAuthStore } from '@/store/authStore';
+import { getGeneralSettings } from '@/services/generalSettings';
+import { signOutUser } from '@/services/auth';
+import { toast } from 'sonner';
 
 interface DashboardSidebarProps {
   sidebarOpen: boolean;
@@ -20,8 +23,9 @@ interface DashboardSidebarProps {
 }
 
 const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
-  const { user } = useAuth();
+  const { user, profile } = useAuthStore();
   const location = useLocation();
+  const navigate = useNavigate();
   const [coursesExternalUrl, setCoursesExternalUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -37,19 +41,45 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ sidebarOpen, setSid
   const navigation = [
     { name: 'Genel Bakış', href: '/dashboard', icon: LayoutDashboard, isExternal: false },
     { name: 'Siparişlerim', href: '/dashboard/orders', icon: ShoppingBag, isExternal: false },
-    // 'Kurslarım' will be dynamically added based on coursesExternalUrl
     { name: 'Profil', href: '/dashboard/profile', icon: User, isExternal: false },
   ];
 
+  const handleSignOut = async () => {
+    console.log('🔵 [DashboardSidebar] handleSignOut called');
+    alert('BUTTON CLICKED!'); // 🔴 TEST: Bu alert görünmeli!
+    
+    try {
+      const success = await signOutUser();
+      
+      if (success) {
+        console.log('✅ [DashboardSidebar] Logout successful, redirecting...');
+        setSidebarOpen(false);
+        navigate('/', { replace: true });
+      } else {
+        console.error('❌ [DashboardSidebar] Logout failed');
+        toast.error('Çıkış yapılırken bir hata oluştu');
+      }
+    } catch (error) {
+      console.error('❌ [DashboardSidebar] Logout error:', error);
+      toast.error('Çıkış yapılırken bir hata oluştu');
+    }
+  };
+
   const getUserInitials = () => {
-    if (user?.full_name) {
-      const names = user.full_name.split(' ');
+    const fullName = profile?.full_name || user?.user_metadata?.full_name;
+    
+    if (fullName) {
+      const names = fullName.split(' ');
       if (names.length >= 2) {
         return `${names[0][0]}${names[1][0]}`.toUpperCase();
       }
       return names[0][0].toUpperCase();
     }
     return user?.email?.[0].toUpperCase() || 'U';
+  };
+
+  const getDisplayName = () => {
+    return profile?.full_name || user?.user_metadata?.full_name || 'Kullanıcı';
   };
 
   return (
@@ -76,31 +106,32 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ sidebarOpen, setSid
             {/* Avatar and User Info */}
             <div className="flex items-center gap-3">
               <Avatar className="h-12 w-12 border-2 border-[var(--color-primary)]/20">
-                <AvatarImage src={user?.avatar_url || undefined} alt={user?.full_name || 'User'} />
+                <AvatarImage src={profile?.avatar_url || user?.user_metadata?.avatar_url || undefined} alt={getDisplayName()} />
                 <AvatarFallback className="bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-semibold">
                   {getUserInitials()}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
                 <h1 className="text-base font-bold text-[var(--fg)] truncate">
-                  {user?.full_name || 'Kullanıcı'}
+                  {getDisplayName()}
                 </h1>
                 <p className="text-xs text-[var(--fg-muted)] truncate">{user?.email}</p>
               </div>
             </div>
             
             {/* Homepage Button */}
-						<div className="pt-4 border-t border-gray-800 dark:border-gray-900">
-            <Link to="/" onClick={() => setSidebarOpen(false)} className="mt-4"> {/* mt-4 eklendi */}
-              <Button 
-                variant="outline" 
-                className="w-full justify-start border-[var(--border)] hover:bg-[var(--bg-hover)] hover:text-[var(--color-primary)] transition-colors"
-              >
-                <Home className="h-5 w-5 mr-3" />
-                Ana Sayfaya Dön
-              </Button>
-            </Link>
-          </div> </div>
+            <div className="pt-4 border-t border-[var(--border)]">
+              <Link to="/" onClick={() => setSidebarOpen(false)}>
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start border-[var(--border)] hover:bg-[var(--bg-hover)] hover:text-[var(--color-primary)] transition-colors"
+                >
+                  <Home className="h-5 w-5 mr-3" />
+                  Ana Sayfaya Dön
+                </Button>
+              </Link>
+            </div>
+          </div>
         </div>
 
         {/* Navigation */}
@@ -152,6 +183,22 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ sidebarOpen, setSid
             </motion.div>
           )}
         </nav>
+
+        {/* 🔴 TEST LOGOUT BUTTON - INLINE ONCLICK */}
+        <div className="p-4 border-t border-[var(--border)]">
+          <button
+            onClick={() => {
+              alert('🔴 INLINE ONCLICK WORKS!');
+              console.log('🔴 INLINE ONCLICK TRIGGERED');
+              handleSignOut();
+            }}
+            className="inline-flex items-center justify-start gap-3 w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors text-[var(--fg)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
+            style={{ position: 'relative', zIndex: 9999 }}
+          >
+            <LogOut className="h-5 w-5" />
+            <span className="font-medium">Çıkış Yap (TEST)</span>
+          </button>
+        </div>
       </div>
     </aside>
   );

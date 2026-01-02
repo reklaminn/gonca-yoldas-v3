@@ -9,12 +9,14 @@ import {
   Users, 
   Loader2,
   Search,
-  ArrowRightLeft,
   CheckCircle2
 } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
+import { useAuthStore } from '@/store/authStore';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 interface Profile {
   id: string;
@@ -24,48 +26,100 @@ interface Profile {
 }
 
 const AdminRoles: React.FC = () => {
+  const { session } = useAuthStore();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchProfiles();
-  }, []);
+    console.log('🔵 [AdminRoles] Component mounted');
+    console.log('🔵 [AdminRoles] Session available:', !!session);
+    console.log('🔵 [AdminRoles] Access token:', !!session?.access_token);
+    
+    if (session?.access_token) {
+      fetchProfiles();
+    } else {
+      console.error('❌ [AdminRoles] No access token available!');
+      setLoading(false);
+      toast.error('Oturum bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
+    }
+  }, [session?.access_token]); // ✅ Only depend on access_token
 
   const fetchProfiles = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, role')
-        .order('full_name');
+    if (!session?.access_token) {
+      console.error('❌ [AdminRoles] Cannot fetch without token');
+      return;
+    }
 
-      if (error) throw error;
+    try {
+      console.log('🔵 [AdminRoles] Fetching profiles...');
+      setLoading(true);
+      
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?select=id,email,full_name,role&order=full_name.asc`,
+        {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('❌ [AdminRoles] Fetch failed:', response.status, errorData);
+        throw new Error(`HTTP ${response.status}: ${errorData.message || 'Fetch failed'}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ [AdminRoles] Profiles fetched:', data.length);
       setProfiles(data || []);
-    } catch (error) {
-      console.error('Error fetching profiles:', error);
-      toast.error('Kullanıcılar yüklenirken hata oluştu');
+    } catch (error: any) {
+      console.error('❌ [AdminRoles] Error fetching profiles:', error);
+      toast.error('Kullanıcılar yüklenirken hata oluştu: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
   const updateRole = async (userId: string, newRole: string) => {
+    if (!session?.access_token) {
+      toast.error('Oturum bilgisi bulunamadı');
+      return;
+    }
+
     try {
+      console.log('🔵 [AdminRoles] Updating role for user:', userId, 'to:', newRole);
       setUpdatingId(userId);
-      const { error } = await supabase
-        .from('profiles')
-        .update({ role: newRole })
-        .eq('id', userId);
+      
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify({ role: newRole }),
+        }
+      );
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('❌ [AdminRoles] Update failed:', response.status, errorData);
+        throw new Error(`HTTP ${response.status}: ${errorData.message || 'Update failed'}`);
+      }
 
+      console.log('✅ [AdminRoles] Role updated successfully');
       setProfiles(profiles.map(p => p.id === userId ? { ...p, role: newRole } : p));
       toast.success('Kullanıcı rolü güncellendi');
-    } catch (error) {
-      console.error('Error updating role:', error);
-      toast.error('Rol güncellenirken hata oluştu');
+    } catch (error: any) {
+      console.error('❌ [AdminRoles] Error updating role:', error);
+      toast.error('Rol güncellenirken hata oluştu: ' + error.message);
     } finally {
       setUpdatingId(null);
     }
@@ -85,7 +139,10 @@ const AdminRoles: React.FC = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-[var(--color-primary)]" />
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-[var(--color-primary)] mx-auto mb-4" />
+          <p className="text-[var(--fg-muted)]">Kullanıcılar yükleniyor...</p>
+        </div>
       </div>
     );
   }
@@ -159,80 +216,87 @@ const AdminRoles: React.FC = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-[var(--border)]">
-                  <th className="py-4 px-4 font-semibold text-sm">Kullanıcı</th>
-                  <th className="py-4 px-4 font-semibold text-sm">Mevcut Rol</th>
-                  <th className="py-4 px-4 font-semibold text-sm text-right">Rolü Değiştir</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border)]">
-                {filteredProfiles.map((profile) => (
-                  <tr key={profile.id} className="hover:bg-[var(--bg-surface)] transition-colors">
-                    <td className="py-4 px-4">
-                      <div className="font-medium">{profile.full_name || 'İsimsiz'}</div>
-                      <div className="text-xs text-[var(--fg-muted)]">{profile.email}</div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <Badge 
-                        variant="outline" 
-                        className={
-                          profile.role === 'admin' ? 'border-red-500 text-red-500 bg-red-500/5' :
-                          profile.role === 'instructor' ? 'border-blue-500 text-blue-500 bg-blue-500/5' :
-                          'border-green-500 text-green-500 bg-green-500/5'
-                        }
-                      >
-                        {profile.role === 'admin' ? 'Admin' : 
-                         profile.role === 'instructor' ? 'Eğitmen' : 'Öğrenci'}
-                      </Badge>
-                    </td>
-                    <td className="py-4 px-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {updatingId === profile.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-[var(--color-primary)]" />
-                        ) : (
-                          <>
-                            {profile.role !== 'user' && profile.role !== 'student' && (
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="text-xs h-8"
-                                onClick={() => updateRole(profile.id, 'user')}
-                              >
-                                Öğrenci Yap
-                              </Button>
-                            )}
-                            {profile.role !== 'instructor' && (
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="text-xs h-8 text-blue-500 hover:text-blue-600"
-                                onClick={() => updateRole(profile.id, 'instructor')}
-                              >
-                                Eğitmen Yap
-                              </Button>
-                            )}
-                            {profile.role !== 'admin' && (
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="text-xs h-8 text-red-500 hover:text-red-600"
-                                onClick={() => updateRole(profile.id, 'admin')}
-                              >
-                                Admin Yap
-                              </Button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </td>
+          {filteredProfiles.length === 0 ? (
+            <div className="text-center py-12">
+              <Users className="h-12 w-12 text-[var(--fg-muted)] mx-auto mb-4" />
+              <p className="text-[var(--fg-muted)]">Kullanıcı bulunamadı</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-[var(--border)]">
+                    <th className="py-4 px-4 font-semibold text-sm">Kullanıcı</th>
+                    <th className="py-4 px-4 font-semibold text-sm">Mevcut Rol</th>
+                    <th className="py-4 px-4 font-semibold text-sm text-right">Rolü Değiştir</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-[var(--border)]">
+                  {filteredProfiles.map((profile) => (
+                    <tr key={profile.id} className="hover:bg-[var(--bg-surface)] transition-colors">
+                      <td className="py-4 px-4">
+                        <div className="font-medium">{profile.full_name || 'İsimsiz'}</div>
+                        <div className="text-xs text-[var(--fg-muted)]">{profile.email}</div>
+                      </td>
+                      <td className="py-4 px-4">
+                        <Badge 
+                          variant="outline" 
+                          className={
+                            profile.role === 'admin' ? 'border-red-500 text-red-500 bg-red-500/5' :
+                            profile.role === 'instructor' ? 'border-blue-500 text-blue-500 bg-blue-500/5' :
+                            'border-green-500 text-green-500 bg-green-500/5'
+                          }
+                        >
+                          {profile.role === 'admin' ? 'Admin' : 
+                           profile.role === 'instructor' ? 'Eğitmen' : 'Öğrenci'}
+                        </Badge>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {updatingId === profile.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-[var(--color-primary)]" />
+                          ) : (
+                            <>
+                              {profile.role !== 'user' && profile.role !== 'student' && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="text-xs h-8"
+                                  onClick={() => updateRole(profile.id, 'user')}
+                                >
+                                  Öğrenci Yap
+                                </Button>
+                              )}
+                              {profile.role !== 'instructor' && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="text-xs h-8 text-blue-500 hover:text-blue-600"
+                                  onClick={() => updateRole(profile.id, 'instructor')}
+                                >
+                                  Eğitmen Yap
+                                </Button>
+                              )}
+                              {profile.role !== 'admin' && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="text-xs h-8 text-red-500 hover:text-red-600"
+                                  onClick={() => updateRole(profile.id, 'admin')}
+                                >
+                                  Admin Yap
+                                </Button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

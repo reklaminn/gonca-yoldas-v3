@@ -1,4 +1,3 @@
-import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 
 export interface GeneralSettings {
@@ -20,93 +19,110 @@ export interface GeneralSettings {
 }
 
 /**
- * Get all general settings (single row)
+ * Get all general settings (single row) - DIRECT FETCH VERSION
  */
 export async function getGeneralSettings(): Promise<GeneralSettings | null> {
   try {
-    console.log('🔵 Fetching general settings...');
+    console.log('🔵 [GeneralSettings] Fetching general settings with direct fetch...');
 
-    const { data, error } = await supabase
-      .from('general_settings')
-      .select('*')
-      .single();
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-    if (error) {
-      console.error('❌ Error fetching general settings:', error);
-      throw error;
+    const url = `${supabaseUrl}/rest/v1/general_settings?limit=1`;
+    
+    console.log('🔵 [GeneralSettings] Fetching from:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/vnd.pgrst.object+json' // Request single object instead of array
+      }
+    });
+
+    console.log('🔵 [GeneralSettings] Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [GeneralSettings] HTTP Error:', response.status, errorText);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
 
-    console.log('✅ General settings fetched:', data);
+    const data = await response.json();
+    console.log('✅ [GeneralSettings] General settings fetched:', data);
+    
     return data;
-    return data;
-  } catch (error: unknown) {
-    console.error('❌ Failed to fetch general settings:', error);
+  } catch (error: any) {
+    console.error('❌ [GeneralSettings] Failed to fetch general settings:', error);
     toast.error('Genel ayarlar yüklenemedi');
     return null;
   }
 }
 
 /**
- * Update general settings
+ * Update general settings - DIRECT FETCH VERSION
  */
 export async function updateGeneralSettings(
   id: string,
   updates: Partial<Omit<GeneralSettings, 'id' | 'created_at' | 'updated_at'>>
 ): Promise<boolean> {
   try {
-    console.log('🔵 Updating general settings:', id);
-    console.log('📝 Updates to apply:', updates);
+    console.log('🔵 [GeneralSettings] Updating general settings:', id);
+    console.log('📝 [GeneralSettings] Updates to apply:', updates);
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      console.error('❌ User error or not authenticated:', userError);
-      toast.error('Oturum açmanız gerekiyor');
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    // Get auth token from localStorage (Zustand persist)
+    const authStorage = localStorage.getItem('auth-storage');
+    let accessToken = supabaseKey; // fallback to anon key
+    
+    if (authStorage) {
+      try {
+        const parsed = JSON.parse(authStorage);
+        if (parsed.state?.user?.access_token) {
+          accessToken = parsed.state.user.access_token;
+          console.log('🔵 [GeneralSettings] Using user access token');
+        }
+      } catch (e) {
+        console.warn('⚠️ [GeneralSettings] Could not parse auth storage');
+      }
+    }
+
+    const url = `${supabaseUrl}/rest/v1/general_settings?id=eq.${id}`;
+    
+    console.log('🔵 [GeneralSettings] Updating at:', url);
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(updates)
+    });
+
+    console.log('🔵 [GeneralSettings] Update response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [GeneralSettings] Update error:', response.status, errorText);
+      toast.error(`Güncelleme hatası: ${response.status}`);
       return false;
     }
 
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (profileError || profile?.role !== 'admin') {
-      console.error('❌ User is not admin:', profile?.role);
-      toast.error('Bu işlem için yetkiniz yok');
-      return false;
-    }
-
-    console.log('🔄 Attempting database update...');
-    const { data, error } = await supabase
-      .from('general_settings')
-      .update(updates)
-      .eq('id', id)
-      .select();
-
-    console.log('📊 Update response:', { data, error });
-
-    if (error) {
-      console.error('❌ Error updating general settings:', error);
-      console.error('❌ Error details:', JSON.stringify(error, null, 2));
-      toast.error(`Güncelleme hatası: ${error.message}`);
-      throw error;
-    }
-
-    if (!data || data.length === 0) {
-      console.error('❌ No data returned from update');
-      toast.error('Güncelleme başarısız oldu');
-      return false;
-    }
-
-    console.log('✅ General settings updated successfully');
+    const data = await response.json();
+    console.log('✅ [GeneralSettings] General settings updated:', data);
+    
     toast.success('Genel ayarlar güncellendi');
     return true;
-    toast.success('Genel ayarlar güncellendi');
-    return true;
-  } catch (error: unknown) {
-    console.error('❌ Failed to update general settings:', error);
-    const dbError = error as { message?: string };
-    toast.error(`Genel ayarlar güncellenemedi: ${dbError.message || 'Bilinmeyen hata'}`);
+  } catch (error: any) {
+    console.error('❌ [GeneralSettings] Failed to update general settings:', error);
+    toast.error(`Genel ayarlar güncellenemedi: ${error.message || 'Bilinmeyen hata'}`);
     return false;
   }
 }
@@ -118,8 +134,8 @@ export async function isCouponEnabled(): Promise<boolean> {
   try {
     const settings = await getGeneralSettings();
     return settings?.coupon_enabled ?? true; // Default to true if not found
-  } catch (error: unknown) {
-    console.error('❌ Failed to check coupon status:', error);
+  } catch (error: any) {
+    console.error('❌ [GeneralSettings] Failed to check coupon status:', error);
     return true; // Default to enabled on error
   }
 }
@@ -131,8 +147,8 @@ export async function isInvoiceEnabled(): Promise<boolean> {
   try {
     const settings = await getGeneralSettings();
     return settings?.invoice_enabled ?? true; // Default to true if not found
-  } catch (error: unknown) {
-    console.error('❌ Failed to check invoice status:', error);
+  } catch (error: any) {
+    console.error('❌ [GeneralSettings] Failed to check invoice status:', error);
     return true; // Default to enabled on error
   }
 }
@@ -144,8 +160,8 @@ export async function shouldShowPricesWithVAT(): Promise<boolean> {
   try {
     const settings = await getGeneralSettings();
     return settings?.show_prices_with_vat ?? true; // Default to true (show with VAT) if not found
-  } catch (error: unknown) {
-    console.error('❌ Failed to check VAT display status:', error);
+  } catch (error: any) {
+    console.error('❌ [GeneralSettings] Failed to check VAT display status:', error);
     return true; // Default to showing with VAT on error
   }
 }

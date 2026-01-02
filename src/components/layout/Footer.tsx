@@ -3,13 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { Facebook, Instagram, Twitter, Mail, Phone, MapPin, Shield } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/store/authStore';
 
 const Footer: React.FC = () => {
   const navigate = useNavigate();
   const [logoError, setLogoError] = useState(false);
   const { resolvedTheme } = useTheme();
-  const { user } = useAuth();
+  const { user, profile } = useAuthStore();
+
+  // ✅ FIX: Correct role check using profile from Zustand
+  const isAdmin = profile?.role === 'admin';
 
   const logoUrl = "https://www.goncayoldas.com/contents/img/logogoncayoldas2.png";
 
@@ -43,8 +46,6 @@ const Footer: React.FC = () => {
     { icon: Instagram, href: 'https://instagram.com', label: 'Instagram' },
     { icon: Twitter, href: 'https://twitter.com', label: 'Twitter' },
   ];
-
-  const isAdmin = user?.role === 'admin';
 
   return (
     <footer 
@@ -124,7 +125,7 @@ const Footer: React.FC = () => {
           {/* Programs */}
           <div>
             <h4 className="font-poppins font-semibold mb-4" style={{ color: 'var(--fg)' }}>
-              Programlar
+              Eğitimler
             </h4>
             <ul className="space-y-2">
               {footerLinks.programs.map((link) => (
@@ -158,11 +159,11 @@ const Footer: React.FC = () => {
                   </button>
                 </li>
               ))}
-              {/* Admin Panel Link - Only visible to admins */}
+              {/* ✅ FIX: Admin Panel Link - Only visible to admins */}
               {isAdmin && (
                 <li>
                   <button
-                    onClick={() => navigate('/admin/programs')}
+                    onClick={() => navigate('/admin')}
                     className="text-sm transition-colors hover:text-[var(--color-primary)] flex items-center gap-2"
                     style={{ color: 'var(--fg-muted)' }}
                   >

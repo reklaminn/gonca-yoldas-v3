@@ -14,8 +14,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { usePrograms, deleteProgram } from '@/hooks/usePrograms';
+import { useAgeGroups } from '@/hooks/useAgeGroups';
 import { useToast } from '@/hooks/use-toast';
+import { AgeGroupsManager } from '@/components/admin/AgeGroupsManager';
 import { 
   BookOpen, 
   Search, 
@@ -28,7 +38,8 @@ import {
   Loader2,
   Image as ImageIcon,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Settings2
 } from 'lucide-react';
 
 const AdminPrograms: React.FC = () => {
@@ -37,11 +48,20 @@ const AdminPrograms: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAgeGroup, setSelectedAgeGroup] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
+  
+  // Delete Dialog State
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [programToDelete, setProgramToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Age Group Management State
+  const [manageAgeGroupsOpen, setManageAgeGroupsOpen] = useState(false);
   
   const { programs, loading, refetch } = usePrograms();
+  const { 
+    ageGroups, 
+    refetch: refetchAgeGroups 
+  } = useAgeGroups();
 
   const getStatusBadge = (status: string) => {
     const config = {
@@ -58,15 +78,26 @@ const AdminPrograms: React.FC = () => {
     );
   };
 
-  const getAgeGroupBadge = (ageGroup: string) => {
-    const colors = {
-      '0-2': 'bg-pink-100 text-pink-700 border-pink-200',
-      '2-5': 'bg-blue-100 text-blue-700 border-blue-200',
-      '5-10': 'bg-purple-100 text-purple-700 border-purple-200',
-    };
+  const getAgeGroupBadge = (ageGroupValue: string) => {
+    // Find label from dynamic groups or fallback to value
+    const group = ageGroups.find(g => g.value === ageGroupValue);
+    const label = group ? group.label : `${ageGroupValue} yaş`;
+    
+    // Generate a consistent color based on the value string
+    const colors = [
+      'bg-pink-100 text-pink-700 border-pink-200',
+      'bg-blue-100 text-blue-700 border-blue-200',
+      'bg-purple-100 text-purple-700 border-purple-200',
+      'bg-green-100 text-green-700 border-green-200',
+      'bg-orange-100 text-orange-700 border-orange-200',
+    ];
+    
+    // Simple hash to pick a color
+    const colorIndex = ageGroupValue.length % colors.length;
+    
     return (
-      <Badge variant="outline" className={colors[ageGroup as keyof typeof colors]}>
-        {ageGroup} yaş
+      <Badge variant="outline" className={colors[colorIndex]}>
+        {label}
       </Badge>
     );
   };
@@ -97,9 +128,7 @@ const AdminPrograms: React.FC = () => {
         variant: "default",
       });
 
-      // Refresh the programs list
       await refetch();
-      
       setDeleteDialogOpen(false);
       setProgramToDelete(null);
     } catch (error) {
@@ -214,35 +243,49 @@ const AdminPrograms: React.FC = () => {
                 className="pl-10 bg-[var(--bg-input)] text-[var(--fg)] border-[var(--border)]"
               />
             </div>
-            <div className="flex gap-2 flex-wrap">
-              <Button
-                variant={selectedAgeGroup === 'all' ? 'default' : 'outline'}
-                onClick={() => setSelectedAgeGroup('all')}
-                size="sm"
-              >
-                Tüm Yaşlar
-              </Button>
-              <Button
-                variant={selectedAgeGroup === '0-2' ? 'default' : 'outline'}
-                onClick={() => setSelectedAgeGroup('0-2')}
-                size="sm"
-              >
-                0-2 Yaş
-              </Button>
-              <Button
-                variant={selectedAgeGroup === '2-5' ? 'default' : 'outline'}
-                onClick={() => setSelectedAgeGroup('2-5')}
-                size="sm"
-              >
-                2-5 Yaş
-              </Button>
-              <Button
-                variant={selectedAgeGroup === '5-10' ? 'default' : 'outline'}
-                onClick={() => setSelectedAgeGroup('5-10')}
-                size="sm"
-              >
-                5-10 Yaş
-              </Button>
+            
+            <div className="flex gap-2 flex-wrap items-center">
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant={selectedAgeGroup === 'all' ? 'default' : 'outline'}
+                  onClick={() => setSelectedAgeGroup('all')}
+                  size="sm"
+                >
+                  Tüm Yaşlar
+                </Button>
+                
+                {ageGroups.map((group) => (
+                  <Button
+                    key={group.id}
+                    variant={selectedAgeGroup === group.value ? 'default' : 'outline'}
+                    onClick={() => setSelectedAgeGroup(group.value)}
+                    size="sm"
+                  >
+                    {group.label}
+                  </Button>
+                ))}
+              </div>
+
+              {/* Manage Age Groups Button */}
+              <Dialog open={manageAgeGroupsOpen} onOpenChange={setManageAgeGroupsOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" size="icon" title="Yaş Gruplarını Yönet">
+                    <Settings2 className="h-4 w-4" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Yaş Gruplarını Yönet</DialogTitle>
+                    <DialogDescription>
+                      Filtreleme seçeneklerini buradan düzenleyebilir ve sıralayabilirsiniz.
+                    </DialogDescription>
+                  </DialogHeader>
+                  
+                  <div className="py-4">
+                    <AgeGroupsManager embedded onChange={refetchAgeGroups} />
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
         </CardContent>
@@ -336,7 +379,7 @@ const AdminPrograms: React.FC = () => {
         )}
       </div>
 
-      {/* Delete Confirmation Dialog - FIXED WITH TAILWIND CLASSES */}
+      {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent className="bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-gray-800 shadow-2xl max-w-md">
           <AlertDialogHeader className="space-y-4">
@@ -347,7 +390,7 @@ const AdminPrograms: React.FC = () => {
               Programı Sil
             </AlertDialogTitle>
             <AlertDialogDescription className="text-center text-base leading-relaxed text-gray-600 dark:text-gray-400">
-              Bu programı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz ve programla ilgili tüm veriler (özellikler, çıktılar, SSS) silinecektir.
+              Bu programı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz ve programla ilgili tüm veriler silinecektir.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col sm:flex-row gap-2 mt-6">
