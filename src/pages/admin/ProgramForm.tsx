@@ -25,6 +25,8 @@ import {
   CheckCircle,
   Image as ImageIcon,
   Link as LinkIcon,
+  Package,
+  List
 } from 'lucide-react';
 import { useAgeGroups } from '@/hooks/useAgeGroups';
 import { useAuthStore } from '@/store/authStore';
@@ -32,6 +34,14 @@ import { toast } from 'sonner';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+interface PricingOption {
+  id: string;
+  title: string;
+  price: number;
+  description: string;
+  details: string; // We'll handle this as a newline-separated string in the form
+}
 
 interface ProgramFormData {
   title: string;
@@ -53,6 +63,8 @@ interface ProgramFormData {
   features: { text: string }[];
   outcomes: { text: string }[];
   faqs: { question: string; answer: string }[];
+  pricing_options: PricingOption[];
+  metadata: any; // Store raw metadata to preserve other fields
 }
 
 const ProgramForm: React.FC = () => {
@@ -102,6 +114,8 @@ const ProgramForm: React.FC = () => {
       features: [{ text: '' }],
       outcomes: [{ text: '' }],
       faqs: [{ question: '', answer: '' }],
+      pricing_options: [],
+      metadata: {}
     },
   });
 
@@ -130,6 +144,15 @@ const ProgramForm: React.FC = () => {
   } = useFieldArray({
     control,
     name: 'faqs',
+  });
+
+  const {
+    fields: pricingOptionFields,
+    append: appendPricingOption,
+    remove: removePricingOption,
+  } = useFieldArray({
+    control,
+    name: 'pricing_options',
   });
 
   const ageGroup = watch('age_group');
@@ -213,6 +236,16 @@ const ProgramForm: React.FC = () => {
       const programFeatures = features?.filter((f: any) => f.feature_type === 'feature') || [];
       const programOutcomes = features?.filter((f: any) => f.feature_type === 'outcome') || [];
 
+      // Parse pricing options from metadata
+      const metadata = program.metadata || {};
+      const pricingOptions = metadata.pricing_options?.map((opt: any) => ({
+        id: opt.id,
+        title: opt.title,
+        price: opt.price,
+        description: opt.description,
+        details: Array.isArray(opt.details) ? opt.details.join('\n') : (opt.details || '')
+      })) || [];
+
       // Reset form with all data
       reset({
         title: program.title,
@@ -240,6 +273,8 @@ const ProgramForm: React.FC = () => {
         faqs: faqs && faqs.length > 0
           ? faqs.map((f: any) => ({ question: f.question, answer: f.answer }))
           : [{ question: '', answer: '' }],
+        pricing_options: pricingOptions,
+        metadata: metadata
       });
 
       // Set existing image
@@ -399,6 +434,18 @@ const ProgramForm: React.FC = () => {
         }
       }
 
+      // Prepare metadata with pricing options
+      const updatedMetadata = {
+        ...data.metadata,
+        pricing_options: data.pricing_options.map(opt => ({
+          id: opt.id || `opt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          title: opt.title,
+          price: Number(opt.price),
+          description: opt.description,
+          details: opt.details.split('\n').filter(line => line.trim() !== '')
+        }))
+      };
+
       // Prepare program data
       const programData = {
         slug,
@@ -419,6 +466,7 @@ const ProgramForm: React.FC = () => {
         status: data.status,
         featured: data.featured,
         sort_order: Number(data.sort_order),
+        metadata: updatedMetadata
       };
 
       let programId: string;
@@ -812,7 +860,7 @@ const ProgramForm: React.FC = () => {
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="price">
-                  Fiyat (₺) <span className="text-red-500">*</span>
+                  Varsayılan Fiyat (₺) <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="price"
@@ -930,6 +978,84 @@ const ProgramForm: React.FC = () => {
                 )}
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Pricing Options (New Section) */}
+        <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Package className="h-5 w-5 text-blue-600" />
+              <CardTitle>Fiyatlandırma Seçenekleri (Paketler)</CardTitle>
+            </div>
+            <CardDescription>
+              Eğer programın birden fazla paketi varsa (örn: 12 Derslik / 24 Derslik), buradan ekleyebilirsiniz.
+              Hiç paket eklemezseniz yukarıdaki "Varsayılan Fiyat" geçerli olur.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {pricingOptionFields.map((field, index) => (
+              <div key={field.id} className="p-4 bg-white dark:bg-gray-800 rounded-lg border shadow-sm space-y-4 relative">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removePricingOption(index)}
+                  className="absolute top-2 right-2 text-red-500 hover:bg-red-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+                
+                <div className="grid md:grid-cols-2 gap-4 pr-8">
+                  <div className="space-y-2">
+                    <Label>Paket Başlığı</Label>
+                    <Input
+                      {...register(`pricing_options.${index}.title` as const, { required: true })}
+                      placeholder="Örn: 12 Derslik Paket"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Fiyat (₺)</Label>
+                    <Input
+                      type="number"
+                      {...register(`pricing_options.${index}.price` as const, { required: true })}
+                      placeholder="12000"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Kısa Açıklama</Label>
+                  <Input
+                    {...register(`pricing_options.${index}.description` as const)}
+                    placeholder="Örn: Haftada 1 gün, toplam 12 hafta"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <List className="h-4 w-4" />
+                    Detaylar (Her satıra bir özellik)
+                  </Label>
+                  <Textarea
+                    {...register(`pricing_options.${index}.details` as const)}
+                    placeholder="Süre: 50 dk&#10;Gün: Pazar&#10;Saat: 21:45"
+                    rows={4}
+                    className="font-mono text-sm"
+                  />
+                </div>
+              </div>
+            ))}
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => appendPricingOption({ id: '', title: '', price: 0, description: '', details: '' })}
+              className="w-full border-dashed border-2 py-6"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Yeni Paket Ekle
+            </Button>
           </CardContent>
         </Card>
 

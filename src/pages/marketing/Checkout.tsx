@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -9,9 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { 
-  Loader2, Lock, CheckCircle2, CreditCard, Mail, Phone, MapPin, 
-  Building2, ShieldCheck, Info, Copy, Check, User, ChevronRight,
-  Shield, Zap, AlertCircle, ExternalLink
+  Loader2, ShieldCheck, CreditCard, Building2, Copy, 
+  ChevronRight, AlertCircle, ExternalLink, Package, Shield, Zap, User
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
@@ -27,16 +26,16 @@ const validatePhone = (phone: string) => /^5\d{9}$/.test(phone.replace(/\D/g, ''
 const validateTC = (tc: string) => /^[1-9][0-9]{10}$/.test(tc);
 
 const Checkout: React.FC = () => {
-  console.log('🛒 [Checkout] Component rendering...');
-  
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const programSlug = searchParams.get('program');
+  const optionId = searchParams.get('option'); // URL'den opsiyon ID'sini al
   
   const { user } = useAuthStore();
   const userEmail = user?.email || '';
 
   const [program, setProgram] = useState<Program | null>(null);
+  const [selectedPackage, setSelectedPackage] = useState<any>(null); // Seçilen paket
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -68,7 +67,8 @@ const Checkout: React.FC = () => {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   // --- Calculations ---
-  const basePrice = program?.price || 0;
+  // Eğer paket seçildiyse paketin fiyatını, yoksa programın ana fiyatını kullan
+  const basePrice = selectedPackage ? Number(selectedPackage.price) : (program?.price || 0);
   const taxRate = 20;
   let calcSubtotal = 0, calcTaxAmount = 0, calcTotal = 0;
 
@@ -119,6 +119,14 @@ const Checkout: React.FC = () => {
         const prog = data[0];
         setProgram(prog);
 
+        // Seçilen paketi bul ve ayarla
+        if (optionId && prog.metadata?.pricing_options) {
+          const foundPackage = prog.metadata.pricing_options.find((opt: any) => opt.id === optionId);
+          if (foundPackage) {
+            setSelectedPackage(foundPackage);
+          }
+        }
+
         const methods = await getActivePaymentMethods();
         setPaymentMethods(methods);
         if (methods.length > 0) {
@@ -131,14 +139,14 @@ const Checkout: React.FC = () => {
 
         setIsLoading(false);
       } catch (err) {
-        console.error('🛒 [Checkout] Error in init():', err);
+        console.error('Error in init():', err);
         toast.error('Veriler yüklenirken bir hata oluştu.');
         setIsLoading(false);
       }
     };
     
     init();
-  }, [programSlug, navigate, userEmail]);
+  }, [programSlug, optionId, navigate, userEmail]);
 
   const validateField = (field: string, value: any): string => {
     switch (field) {
@@ -207,7 +215,6 @@ const Checkout: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate all fields
     const newErrors: Record<string, string> = {};
     Object.keys(formData).forEach(key => {
       const err = validateField(key, formData[key as keyof typeof formData]);
@@ -218,7 +225,6 @@ const Checkout: React.FC = () => {
       setErrors(newErrors);
       setTouched(Object.keys(formData).reduce((a, b) => ({ ...a, [b]: true }), {}));
       
-      // Scroll to first error
       const firstErrorField = document.querySelector('[data-invalid="true"]');
       if (firstErrorField) {
         firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -230,12 +236,17 @@ const Checkout: React.FC = () => {
 
     setIsProcessing(true);
     try {
+      // Program başlığını paket bilgisiyle güncelle
+      const finalProgramTitle = selectedPackage 
+        ? `${program!.title} - ${selectedPackage.title}`
+        : program!.title;
+
       const orderId = await createOrder({
         ...formData,
         programId: program!.id.toString(),
         programSlug: program!.slug,
-        programTitle: program!.title,
-        programPrice: program!.price,
+        programTitle: finalProgramTitle,
+        programPrice: basePrice,
         subtotal: calcSubtotal,
         discountPercentage: 0,
         discountAmount: 0,
@@ -746,8 +757,14 @@ const Checkout: React.FC = () => {
                       </div>
                       <div>
                         <h3 className="font-bold text-sm leading-tight mb-1">{program.title}</h3>
+                        {selectedPackage && (
+                          <div className="flex items-center gap-1 mb-1">
+                            <Package className="h-3 w-3 text-[var(--color-primary)]" />
+                            <span className="text-xs font-medium text-[var(--color-primary)]">{selectedPackage.title}</span>
+                          </div>
+                        )}
                         <p className="text-xs text-[var(--fg-muted)]">{program.age_range} Yaş • {program.duration}</p>
-                        <p className="text-[var(--color-primary)] font-bold mt-1">₺{program.price.toLocaleString('tr-TR')}</p>
+                        <p className="text-[var(--color-primary)] font-bold mt-1">₺{basePrice.toLocaleString('tr-TR')}</p>
                       </div>
                     </div>
 
@@ -794,7 +811,7 @@ const Checkout: React.FC = () => {
             >
               <Card className="text-center p-8 border-[var(--color-primary)] shadow-2xl shadow-[var(--color-primary-alpha)]">
                 <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle2 className="h-12 w-12 text-green-500" />
+                  <ShieldCheck className="h-12 w-12 text-green-500" />
                 </div>
                 <h2 className="text-2xl font-bold mb-2">Siparişiniz Alındı!</h2>
                 <p className="text-[var(--fg-muted)] mb-8">

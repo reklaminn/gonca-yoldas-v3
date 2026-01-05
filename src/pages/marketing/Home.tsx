@@ -1,10 +1,10 @@
-import React, { useMemo } from 'react';
-import { motion } from 'framer-motion';
+import React, { useMemo, useRef } from 'react';
+import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { BookOpen, Users, Award, TrendingUp, ArrowRight, Star, Calendar } from 'lucide-react';
+import { BookOpen, Users, Award, TrendingUp, ArrowRight, Star } from 'lucide-react';
 import { usePrograms } from '@/hooks/usePrograms';
 import { useTestimonials } from '@/hooks/useTestimonials';
 import { useAgeGroups } from '@/hooks/useAgeGroups';
@@ -39,6 +39,35 @@ const Home: React.FC = () => {
   const { programs, loading: programsLoading } = usePrograms('active');
   const { testimonials, loading: testimonialsLoading } = useTestimonials(true);
   const { ageGroups, loading: ageGroupsLoading } = useAgeGroups();
+
+  // --- Hero Animation Logic ---
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+
+  // Smooth spring animation for mouse movement
+  const mouseX = useSpring(x, { stiffness: 150, damping: 15 });
+  const mouseY = useSpring(y, { stiffness: 150, damping: 15 });
+
+  // Transform mouse position to rotation values
+  const rotateX = useTransform(mouseY, [-0.5, 0.5], ["7deg", "-7deg"]);
+  const rotateY = useTransform(mouseX, [-0.5, 0.5], ["-7deg", "7deg"]);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    const mouseXFromCenter = e.clientX - rect.left - width / 2;
+    const mouseYFromCenter = e.clientY - rect.top - height / 2;
+    
+    x.set(mouseXFromCenter / width);
+    y.set(mouseYFromCenter / height);
+  };
+
+  const handleMouseLeave = () => {
+    x.set(0);
+    y.set(0);
+  };
+  // ---------------------------
 
   const handleSignUpClick = () => {
     navigate('/auth/signup');
@@ -201,21 +230,40 @@ const Home: React.FC = () => {
                     </div>
                   </motion.div>
 
+                  {/* Interactive Hero Image Container */}
                   <motion.div
                     initial={{ opacity: 0, x: 50 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.6, delay: 0.2 }}
-                    className="relative hidden lg:block"
+                    className="relative hidden lg:block max-w-[85%] mx-auto perspective-1000"
+                    style={{ perspective: 1000 }}
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeave}
                   >
-                    <div className="aspect-square rounded-2xl bg-gradient-primary p-1">
-                      <div className="w-full h-full rounded-xl bg-[var(--bg-card)] flex items-center justify-center overflow-hidden">
-                        <img
-                          src={content.hero_image || "https://images.pexels.com/photos/8535214/pexels-photo-8535214.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1"}
-                          alt="Mutlu öğrenen çocuklar"
-                          className="w-full h-full object-cover rounded-xl"
-                        />
+                    <motion.div
+                      style={{
+                        rotateX: rotateX,
+                        rotateY: rotateY,
+                        transformStyle: "preserve-3d",
+                      }}
+                      className="relative z-10 transition-shadow duration-300"
+                    >
+                      {/* Shadow / Glow Effect */}
+                      <div className="absolute -inset-4 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-secondary)] rounded-[2rem] blur-2xl opacity-30 -z-10 transform translate-y-4" />
+                      
+                      <div className="aspect-square rounded-2xl bg-gradient-primary p-1.5 shadow-2xl shadow-[var(--color-primary-alpha)]">
+                        <div className="w-full h-full rounded-xl bg-[var(--bg-card)] flex items-center justify-center overflow-hidden relative">
+                          <img
+                            src={content.hero_image || "https://images.pexels.com/photos/8535214/pexels-photo-8535214.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1"}
+                            alt="Mutlu öğrenen çocuklar"
+                            className="w-full h-full object-cover rounded-xl transform scale-[1.01]"
+                          />
+                          
+                          {/* Optional: Overlay sheen effect on hover */}
+                          <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/0 to-white/10 pointer-events-none" />
+                        </div>
                       </div>
-                    </div>
+                    </motion.div>
                   </motion.div>
                 </div>
               </div>
