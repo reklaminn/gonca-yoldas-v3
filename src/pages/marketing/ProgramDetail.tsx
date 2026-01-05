@@ -114,12 +114,10 @@ const ProgramDetail: React.FC = () => {
                   Sınırlı Kontenjan
                 </Badge>
               )}
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-4">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-4 text-white">
                 {program.title}
               </h1>
-              {program.title_en && (
-                <p className="text-xl text-white/80 mb-6">{program.title_en}</p>
-              )}
+            
               <p className="text-lg text-white/90 mb-8">{program.description}</p>
 
               <div className="flex flex-wrap gap-4 mb-8">
@@ -146,7 +144,7 @@ const ProgramDetail: React.FC = () => {
               <div className="flex flex-wrap gap-4">
                 <div className="bg-white text-[var(--color-primary)] px-6 py-4 rounded-lg">
                   <div className="text-3xl font-bold">₺{program.price.toLocaleString()}</div>
-                  <div className="text-sm opacity-80">{program.duration}</div>
+                
                 </div>
                 <Button
                   size="lg"
@@ -215,17 +213,6 @@ const ProgramDetail: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-[var(--color-primary)]/10 flex items-center justify-center flex-shrink-0">
-                      <Users className="h-5 w-5 text-[var(--color-primary)]" />
-                    </div>
-                    <div>
-                      <div className="font-semibold text-[var(--fg)] mb-1">Kontenjan</div>
-                      <div className="text-[var(--fg-muted)]">
-                        {program.enrolled_students} / {program.max_students} öğrenci
-                      </div>
-                    </div>
-                  </div>
 
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-lg bg-[var(--color-primary)]/10 flex items-center justify-center flex-shrink-0">
@@ -237,17 +224,6 @@ const ProgramDetail: React.FC = () => {
                     </div>
                   </div>
 
-                  {metadata.platform && (
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-[var(--color-primary)]/10 flex items-center justify-center flex-shrink-0">
-                        <Video className="h-5 w-5 text-[var(--color-primary)]" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-[var(--fg)] mb-1">Platform</div>
-                        <div className="text-[var(--fg-muted)]">{metadata.platform}</div>
-                      </div>
-                    </div>
-                  )}
 
                   {metadata.recording_access && (
                     <div className="flex items-start gap-3">
@@ -375,16 +351,13 @@ const ProgramDetail: React.FC = () => {
                       <CreditCard className="h-4 w-4 text-[var(--color-primary)]" />
                       <span className="font-semibold text-[var(--fg)]">Taksit Seçenekleri</span>
                     </div>
-                    <div className="space-y-2">
+                    <div className="flex flex-wrap gap-2">
                       {installments.map((months: number) => (
                         <div
                           key={months}
-                          className="flex justify-between items-center p-3 bg-[var(--bg-elev)] rounded-lg"
+                          className="px-3 py-1.5 bg-[var(--bg-elev)] rounded-lg text-sm font-medium text-[var(--fg)] border border-[var(--border)]"
                         >
-                          <span className="text-[var(--fg-muted)]">{months} Taksit</span>
-                          <span className="font-semibold text-[var(--fg)]">
-                            ₺{Math.ceil(program.price / months).toLocaleString()} / ay
-                          </span>
+                          {months} Taksit
                         </div>
                       ))}
                     </div>
@@ -405,7 +378,7 @@ const ProgramDetail: React.FC = () => {
                   <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
                     <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
                       <MessageCircle className="h-4 w-4" />
-                      <span className="text-sm font-medium">WhatsApp grubu dahildir</span>
+                      <span className="text-sm font-medium">Dersleri Online Takip Edebilirsiniz.</span>
                     </div>
                   </div>
                 )}
@@ -439,8 +412,8 @@ const ProgramDetail: React.FC = () => {
             <div className="sticky top-[calc(100vh-12rem)]">
               <Card className="border-[var(--border)] bg-gradient-primary text-white">
                 <CardContent className="p-6">
-                  <h3 className="font-bold text-lg mb-3">Sorularınız mı var?</h3>
-                  <p className="text-white/90 text-sm mb-4">
+                  <h3 className="font-bold text-lg mb-3 text-white">Sorularınız mı var?</h3>
+                  <p className="text-white/90 text-sm mb-4 text-white">
                     Program hakkında detaylı bilgi almak için bizimle iletişime geçin.
                   </p>
                   <Button
@@ -448,7 +421,7 @@ const ProgramDetail: React.FC = () => {
                     onClick={() => navigate('/contact')}
                     className="w-full bg-white text-[var(--color-primary)] hover:bg-gray-100"
                   >
-                    İletişime Geç
+                    Hemen İletişime Geç
                   </Button>
                 </CardContent>
               </Card>

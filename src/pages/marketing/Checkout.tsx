@@ -33,12 +33,8 @@ const Checkout: React.FC = () => {
   const [searchParams] = useSearchParams();
   const programSlug = searchParams.get('program');
   
-  // ✅ FIX: Get user from Zustand, extract email from user object
   const { user } = useAuthStore();
   const userEmail = user?.email || '';
-
-  console.log('🛒 [Checkout] Program slug from URL:', programSlug);
-  console.log('🛒 [Checkout] Auth state:', { hasUser: !!user, userEmail });
 
   const [program, setProgram] = useState<Program | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -88,42 +84,22 @@ const Checkout: React.FC = () => {
   }
 
   useEffect(() => {
-    console.log('🛒 [Checkout] useEffect triggered');
-    
     const init = async () => {
-      console.log('🛒 [Checkout] init() function started');
-      
       try {
-        console.log('🛒 [Checkout] Step 1: Starting initialization...');
-        
-        // ✅ FIX: Use userEmail from user object
-        console.log('🛒 [Checkout] Step 2: Using user email from Zustand');
         if (userEmail) {
           setFormData(prev => ({ ...prev, email: userEmail }));
-          console.log('🛒 [Checkout] User email set from Zustand:', userEmail);
         }
 
-        console.log('🛒 [Checkout] Step 3: Checking program slug...');
         if (!programSlug) {
-          console.warn('🛒 [Checkout] No program slug, redirecting to /programs');
           navigate('/programs');
           return;
         }
 
-        console.log('🛒 [Checkout] Step 4: Fetching program:', programSlug);
-        
         // Direct fetch to Supabase REST API
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
         
-        console.log('🛒 [Checkout] Step 5: Supabase config:', { 
-          url: supabaseUrl, 
-          hasKey: !!supabaseKey 
-        });
-        
         const url = `${supabaseUrl}/rest/v1/programs?slug=eq.${encodeURIComponent(programSlug)}&status=eq.active`;
-        
-        console.log('🛒 [Checkout] Step 6: Fetching from:', url);
         
         const response = await fetch(url, {
           method: 'GET',
@@ -134,62 +110,41 @@ const Checkout: React.FC = () => {
           }
         });
         
-        console.log('🛒 [Checkout] Step 7: Response status:', response.status);
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('🛒 [Checkout] HTTP Error:', response.status, errorText);
-          throw new Error(`HTTP ${response.status}: ${errorText}`);
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const data = await response.json();
-        console.log('🛒 [Checkout] Step 8: Program data received:', data);
         
-        if (!data || data.length === 0) {
-          console.error('🛒 [Checkout] Program not found in response');
-          throw new Error('Program not found');
-        }
+        if (!data || data.length === 0) throw new Error('Program not found');
         
         const prog = data[0];
-        console.log('🛒 [Checkout] Step 9: Program loaded:', prog.title);
         setProgram(prog);
 
-        console.log('🛒 [Checkout] Step 10: Fetching payment methods...');
         const methods = await getActivePaymentMethods();
-        console.log('🛒 [Checkout] Step 11: Payment methods received:', methods.length);
         setPaymentMethods(methods);
         if (methods.length > 0) {
           setSelectedPaymentMethod(methods[0].payment_method);
-          console.log('🛒 [Checkout] Default payment method set:', methods[0].payment_method);
         }
 
-        console.log('🛒 [Checkout] Step 12: Fetching settings...');
         const [inv, vat] = await Promise.all([isInvoiceEnabled(), shouldShowPricesWithVAT()]);
-        console.log('🛒 [Checkout] Step 13: Settings received - Invoice:', inv, 'VAT:', vat);
         setInvoiceSystemEnabled(inv);
         setShowPricesWithVAT(vat);
 
-        console.log('🛒 [Checkout] Step 14: Setting loading to false');
         setIsLoading(false);
-        console.log('🛒 [Checkout] ✅ Initialization complete!');
       } catch (err) {
-        console.error('🛒 [Checkout] ❌ Error in init():', err);
-        console.error('🛒 [Checkout] Error stack:', err instanceof Error ? err.stack : 'No stack');
+        console.error('🛒 [Checkout] Error in init():', err);
         toast.error('Veriler yüklenirken bir hata oluştu.');
         setIsLoading(false);
       }
     };
     
-    console.log('🛒 [Checkout] About to call init()...');
     init();
-    console.log('🛒 [Checkout] init() called (async, will continue in background)');
   }, [programSlug, navigate, userEmail]);
 
   const validateField = (field: string, value: any): string => {
     switch (field) {
       case 'fullName': return !value.trim() ? 'Ad Soyad gereklidir' : '';
       case 'email': return !validateEmail(value) ? 'Geçerli bir e-posta girin' : '';
-      case 'phone': return !validatePhone(value) ? 'Geçerli bir telefon girin' : '';
+      case 'phone': return !validatePhone(value) ? 'Geçerli bir telefon girin (5XX...)' : '';
       case 'city': return invoiceSystemEnabled && !value.trim() ? 'İl seçimi zorunludur' : '';
       case 'district': return invoiceSystemEnabled && !value.trim() ? 'İlçe seçimi zorunludur' : '';
       case 'tcNo':
@@ -213,6 +168,21 @@ const Checkout: React.FC = () => {
         }
         return '';
       case 'kvkkConsent': return !value ? 'Onay gereklidir' : '';
+      
+      // Credit Card Validations
+      case 'cardName':
+        if (selectedPaymentMethod === 'credit_card') return !value.trim() ? 'Kart üzerindeki isim gereklidir' : '';
+        return '';
+      case 'cardNumber':
+        if (selectedPaymentMethod === 'credit_card') return value.length < 16 ? 'Geçerli bir kart numarası girin' : '';
+        return '';
+      case 'expiryDate':
+        if (selectedPaymentMethod === 'credit_card') return value.length < 5 ? 'Geçerli bir tarih girin (AA/YY)' : '';
+        return '';
+      case 'cvc':
+        if (selectedPaymentMethod === 'credit_card') return value.length < 3 ? 'CVC gereklidir' : '';
+        return '';
+        
       default: return '';
     }
   };
@@ -247,6 +217,13 @@ const Checkout: React.FC = () => {
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       setTouched(Object.keys(formData).reduce((a, b) => ({ ...a, [b]: true }), {}));
+      
+      // Scroll to first error
+      const firstErrorField = document.querySelector('[data-invalid="true"]');
+      if (firstErrorField) {
+        firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      
       toast.error('Lütfen eksik alanları doldurun.');
       return;
     }
@@ -287,10 +264,23 @@ const Checkout: React.FC = () => {
     }
   };
 
-  console.log('🛒 [Checkout] Render state:', { isLoading, hasProgram: !!program, programSlug });
+  const renderError = (field: string) => {
+    if (touched[field] && errors[field]) {
+      return (
+        <motion.p
+          initial={{ opacity: 0, y: -5 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-sm text-red-500 mt-1 font-medium flex items-center gap-1"
+        >
+          <AlertCircle className="h-3 w-3" />
+          {errors[field]}
+        </motion.p>
+      );
+    }
+    return null;
+  };
 
   if (isLoading) {
-    console.log('🛒 [Checkout] Showing loading spinner...');
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
         <Loader2 className="animate-spin text-[var(--color-primary)]" />
@@ -299,11 +289,8 @@ const Checkout: React.FC = () => {
   }
   
   if (!program) {
-    console.log('🛒 [Checkout] No program found, returning null');
     return null;
   }
-
-  console.log('🛒 [Checkout] Rendering checkout form...');
 
   const bankConfig = paymentMethods.find(m => m.payment_method === 'bank_transfer')?.config as BankTransferConfig;
 
@@ -348,7 +335,9 @@ const Checkout: React.FC = () => {
                           onChange={e => handleInputChange('fullName', e.target.value)} 
                           onBlur={() => handleBlur('fullName')}
                           className={errors.fullName && touched.fullName ? 'border-red-500' : ''}
+                          data-invalid={!!(errors.fullName && touched.fullName)}
                         />
+                        {renderError('fullName')}
                       </div>
                       <div className="space-y-2">
                         <Label>E-posta *</Label>
@@ -357,8 +346,12 @@ const Checkout: React.FC = () => {
                           placeholder="ornek@mail.com"
                           value={formData.email} 
                           onChange={e => handleInputChange('email', e.target.value)} 
+                          onBlur={() => handleBlur('email')}
                           disabled={!!userEmail}
+                          className={errors.email && touched.email ? 'border-red-500' : ''}
+                          data-invalid={!!(errors.email && touched.email)}
                         />
+                        {renderError('email')}
                       </div>
                     </div>
                     <div className="space-y-2">
@@ -366,12 +359,15 @@ const Checkout: React.FC = () => {
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--fg-muted)] text-sm">+90</span>
                         <Input 
-                          className="pl-12"
+                          className={`pl-12 ${errors.phone && touched.phone ? 'border-red-500' : ''}`}
                           placeholder="5XX XXX XX XX"
                           value={formData.phone} 
                           onChange={e => handleInputChange('phone', e.target.value.replace(/\D/g, ''))} 
+                          onBlur={() => handleBlur('phone')}
+                          data-invalid={!!(errors.phone && touched.phone)}
                         />
                       </div>
+                      {renderError('phone')}
                     </div>
                   </CardContent>
                 </Card>
@@ -406,11 +402,27 @@ const Checkout: React.FC = () => {
                       <div className="grid md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>İl *</Label>
-                          <Input placeholder="Örn: İstanbul" value={formData.city} onChange={e => handleInputChange('city', e.target.value)} />
+                          <Input 
+                            placeholder="Örn: İstanbul" 
+                            value={formData.city} 
+                            onChange={e => handleInputChange('city', e.target.value)} 
+                            onBlur={() => handleBlur('city')}
+                            className={errors.city && touched.city ? 'border-red-500' : ''}
+                            data-invalid={!!(errors.city && touched.city)}
+                          />
+                          {renderError('city')}
                         </div>
                         <div className="space-y-2">
                           <Label>İlçe *</Label>
-                          <Input placeholder="Örn: Kadıköy" value={formData.district} onChange={e => handleInputChange('district', e.target.value)} />
+                          <Input 
+                            placeholder="Örn: Kadıköy" 
+                            value={formData.district} 
+                            onChange={e => handleInputChange('district', e.target.value)} 
+                            onBlur={() => handleBlur('district')}
+                            className={errors.district && touched.district ? 'border-red-500' : ''}
+                            data-invalid={!!(errors.district && touched.district)}
+                          />
+                          {renderError('district')}
                         </div>
                       </div>
 
@@ -429,7 +441,11 @@ const Checkout: React.FC = () => {
                               placeholder="11 haneli TC No"
                               value={formData.tcNo}
                               onChange={e => handleInputChange('tcNo', e.target.value.replace(/\D/g, ''))}
+                              onBlur={() => handleBlur('tcNo')}
+                              className={errors.tcNo && touched.tcNo ? 'border-red-500' : ''}
+                              data-invalid={!!(errors.tcNo && touched.tcNo)}
                             />
+                            {renderError('tcNo')}
                           </motion.div>
                         ) : (
                           <motion.div
@@ -442,16 +458,40 @@ const Checkout: React.FC = () => {
                             <div className="grid md:grid-cols-2 gap-4">
                               <div className="space-y-2">
                                 <Label>Vergi Dairesi *</Label>
-                                <Input placeholder="Beşiktaş V.D." value={formData.taxOffice} onChange={e => handleInputChange('taxOffice', e.target.value)} />
+                                <Input 
+                                  placeholder="Beşiktaş V.D." 
+                                  value={formData.taxOffice} 
+                                  onChange={e => handleInputChange('taxOffice', e.target.value)} 
+                                  onBlur={() => handleBlur('taxOffice')}
+                                  className={errors.taxOffice && touched.taxOffice ? 'border-red-500' : ''}
+                                  data-invalid={!!(errors.taxOffice && touched.taxOffice)}
+                                />
+                                {renderError('taxOffice')}
                               </div>
                               <div className="space-y-2">
                                 <Label>Vergi Numarası *</Label>
-                                <Input placeholder="10 haneli" value={formData.taxNumber} onChange={e => handleInputChange('taxNumber', e.target.value.replace(/\D/g, ''))} />
+                                <Input 
+                                  placeholder="10 haneli" 
+                                  value={formData.taxNumber} 
+                                  onChange={e => handleInputChange('taxNumber', e.target.value.replace(/\D/g, ''))} 
+                                  onBlur={() => handleBlur('taxNumber')}
+                                  className={errors.taxNumber && touched.taxNumber ? 'border-red-500' : ''}
+                                  data-invalid={!!(errors.taxNumber && touched.taxNumber)}
+                                />
+                                {renderError('taxNumber')}
                               </div>
                             </div>
                             <div className="space-y-2">
                               <Label>Fatura Adresi *</Label>
-                              <Textarea placeholder="Şirket tam adresi..." value={formData.billingAddress} onChange={e => handleInputChange('billingAddress', e.target.value)} />
+                              <Textarea 
+                                placeholder="Şirket tam adresi..." 
+                                value={formData.billingAddress} 
+                                onChange={e => handleInputChange('billingAddress', e.target.value)} 
+                                onBlur={() => handleBlur('billingAddress')}
+                                className={errors.billingAddress && touched.billingAddress ? 'border-red-500' : ''}
+                                data-invalid={!!(errors.billingAddress && touched.billingAddress)}
+                              />
+                              {renderError('billingAddress')}
                             </div>
                           </motion.div>
                         )}
@@ -595,20 +635,55 @@ const Checkout: React.FC = () => {
                             >
                               <div className="space-y-2">
                                 <Label>Kart Üzerindeki İsim</Label>
-                                <Input placeholder="JOHN DOE" value={formData.cardName} onChange={e => handleInputChange('cardName', e.target.value.toUpperCase())} />
+                                <Input 
+                                  placeholder="JOHN DOE" 
+                                  value={formData.cardName} 
+                                  onChange={e => handleInputChange('cardName', e.target.value.toUpperCase())} 
+                                  onBlur={() => handleBlur('cardName')}
+                                  className={errors.cardName && touched.cardName ? 'border-red-500' : ''}
+                                  data-invalid={!!(errors.cardName && touched.cardName)}
+                                />
+                                {renderError('cardName')}
                               </div>
                               <div className="space-y-2">
                                 <Label>Kart Numarası</Label>
-                                <Input placeholder="0000 0000 0000 0000" maxLength={19} value={formData.cardNumber} onChange={e => handleInputChange('cardNumber', e.target.value.replace(/\D/g, ''))} />
+                                <Input 
+                                  placeholder="0000 0000 0000 0000" 
+                                  maxLength={19} 
+                                  value={formData.cardNumber} 
+                                  onChange={e => handleInputChange('cardNumber', e.target.value.replace(/\D/g, ''))} 
+                                  onBlur={() => handleBlur('cardNumber')}
+                                  className={errors.cardNumber && touched.cardNumber ? 'border-red-500' : ''}
+                                  data-invalid={!!(errors.cardNumber && touched.cardNumber)}
+                                />
+                                {renderError('cardNumber')}
                               </div>
                               <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                   <Label>Son Kullanma</Label>
-                                  <Input placeholder="AA/YY" maxLength={5} value={formData.expiryDate} onChange={e => handleInputChange('expiryDate', e.target.value)} />
+                                  <Input 
+                                    placeholder="AA/YY" 
+                                    maxLength={5} 
+                                    value={formData.expiryDate} 
+                                    onChange={e => handleInputChange('expiryDate', e.target.value)} 
+                                    onBlur={() => handleBlur('expiryDate')}
+                                    className={errors.expiryDate && touched.expiryDate ? 'border-red-500' : ''}
+                                    data-invalid={!!(errors.expiryDate && touched.expiryDate)}
+                                  />
+                                  {renderError('expiryDate')}
                                 </div>
                                 <div className="space-y-2">
                                   <Label>CVC</Label>
-                                  <Input placeholder="000" maxLength={3} value={formData.cvc} onChange={e => handleInputChange('cvc', e.target.value.replace(/\D/g, ''))} />
+                                  <Input 
+                                    placeholder="000" 
+                                    maxLength={3} 
+                                    value={formData.cvc} 
+                                    onChange={e => handleInputChange('cvc', e.target.value.replace(/\D/g, ''))} 
+                                    onBlur={() => handleBlur('cvc')}
+                                    className={errors.cvc && touched.cvc ? 'border-red-500' : ''}
+                                    data-invalid={!!(errors.cvc && touched.cvc)}
+                                  />
+                                  {renderError('cvc')}
                                 </div>
                               </div>
                             </motion.div>
@@ -620,16 +695,19 @@ const Checkout: React.FC = () => {
                 </Card>
 
                 {/* Onaylar */}
-                <div className="flex items-start gap-3 p-4 rounded-xl bg-[var(--color-primary-alpha)] border border-[var(--color-primary-alpha)]">
-                  <Checkbox 
-                    id="kvkk" 
-                    checked={formData.kvkkConsent} 
-                    onCheckedChange={v => handleInputChange('kvkkConsent', v)} 
-                  />
-                  <Label htmlFor="kvkk" className="text-sm leading-relaxed cursor-pointer">
-                    <span className="font-medium text-[var(--color-primary)]">Mesafeli Satış Sözleşmesi</span>'ni ve 
-                    <span className="font-medium text-[var(--color-primary)]"> KVKK Aydınlatma Metni</span>'ni okudum, onaylıyorum. *
-                  </Label>
+                <div className="space-y-2">
+                  <div className={`flex items-start gap-3 p-4 rounded-xl border transition-colors ${errors.kvkkConsent && touched.kvkkConsent ? 'bg-red-50 border-red-200' : 'bg-[var(--color-primary-alpha)] border-[var(--color-primary-alpha)]'}`}>
+                    <Checkbox 
+                      id="kvkk" 
+                      checked={formData.kvkkConsent} 
+                      onCheckedChange={v => handleInputChange('kvkkConsent', v)} 
+                    />
+                    <Label htmlFor="kvkk" className="text-sm leading-relaxed cursor-pointer">
+                      <span className="font-medium text-[var(--color-primary)]">Mesafeli Satış Sözleşmesi</span>'ni ve 
+                      <span className="font-medium text-[var(--color-primary)]"> KVKK Aydınlatma Metni</span>'ni okudum, onaylıyorum. *
+                    </Label>
+                  </div>
+                  {renderError('kvkkConsent')}
                 </div>
 
                 <Button 
@@ -674,15 +752,7 @@ const Checkout: React.FC = () => {
                     </div>
 
                     <div className="p-4 space-y-3">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-[var(--fg-muted)]">Ara Toplam</span>
-                        <span>₺{calcSubtotal.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-[var(--fg-muted)]">KDV (%{taxRate})</span>
-                        <span>₺{calcTaxAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      </div>
-                      <div className="pt-3 border-t border-[var(--border)] flex justify-between items-end">
+                      <div className="pt-3 flex justify-between items-end">
                         <span className="font-bold">Toplam</span>
                         <div className="text-right">
                           <span className="block text-2xl font-black text-[var(--color-primary)]">

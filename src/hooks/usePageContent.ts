@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAuthStore } from '@/store/authStore';
 
 export interface PageContent {
   id: string;
@@ -12,7 +13,64 @@ export interface PageContent {
   updated_at: string;
 }
 
+// Helper for direct Supabase REST API calls
+async function supabaseFetch(
+  endpoint: string,
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  body?: any,
+  headers: Record<string, string> = {}
+) {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  // ✅ CRITICAL FIX: Get the logged-in user's access token
+  const session = useAuthStore.getState().session;
+  const accessToken = session?.access_token;
+
+  // Ensure URL doesn't have double slashes if endpoint starts with /
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
+  const url = `${supabaseUrl}/rest/v1/${cleanEndpoint}`;
+
+  // Use the User Token if available, otherwise fallback to Anon Key
+  const authHeader = accessToken ? `Bearer ${accessToken}` : `Bearer ${supabaseKey}`;
+
+  const defaultHeaders = {
+    'apikey': supabaseKey,
+    'Authorization': authHeader, // ✅ Sending User Token here
+    'Content-Type': 'application/json',
+    'Prefer': 'return=representation', // Important for getting back the modified data
+    ...headers
+  };
+
+  const options: RequestInit = {
+    method,
+    headers: defaultHeaders,
+  };
+
+  if (body) {
+    options.body = JSON.stringify(body);
+  }
+
+  console.log(`🌐 [SupabaseFetch] ${method} ${url}`);
+  console.log(`🔑 [SupabaseFetch] Auth Mode: ${accessToken ? 'Authenticated User' : 'Anonymous (Read-Only)'}`);
+
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`❌ [SupabaseFetch] HTTP Error ${response.status}:`, errorText);
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+
+  // DELETE might not return content if return=representation isn't supported or needed,
+  // but we use Prefer: return=representation so it usually does.
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+}
+
 // Direct fetch to Supabase REST API (bypasses JS client issues)
+// Keeping this for backward compatibility with existing hooks, but using the new helper internally could be an option.
+// For now, let's keep it independent to avoid breaking the read logic which is working.
 async function fetchFromSupabase(tableName: string, query: string): Promise<any> {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -79,9 +137,6 @@ export function usePageContent(pageKey: string) {
           console.warn('⚠️ [usePageContent] NO DATA FOUND for page:', pageKey);
         } else {
           console.log('✅ [usePageContent] SUCCESS! Found', data.length, 'items for', pageKey);
-          data.forEach((item: PageContent, i: number) => {
-            console.log(`  ${i + 1}. ${item.section_key}: "${item.content_value?.substring(0, 50)}..."`);
-          });
         }
 
         if (isMounted) {
@@ -90,7 +145,6 @@ export function usePageContent(pageKey: string) {
             contentMap[item.section_key] = item.content_value || '';
           });
           setContent(contentMap);
-          console.log('✅ [usePageContent] Content map set:', Object.keys(contentMap));
         }
       } catch (err: any) {
         if (err.name === 'AbortError') {
@@ -107,7 +161,6 @@ export function usePageContent(pageKey: string) {
       } finally {
         if (isMounted) {
           setLoading(false);
-          console.log('🏁 [usePageContent] Loading complete for:', pageKey);
         }
       }
     };
@@ -172,8 +225,7 @@ export function useAllPageContent(pageKey: string) {
   };
 }
 
-// Keep using Supabase client for mutations (they work fine)
-import { supabase } from '@/lib/supabaseClient';
+// --- MUTATIONS (Now using Direct Fetch with Auth Token) ---
 
 export async function updatePageContent(
   id: string,
@@ -182,20 +234,15 @@ export async function updatePageContent(
   try {
     console.log('🔄 [updatePageContent] Updating content:', id, updates);
 
-    const { data, error } = await supabase
-      .from('page_content')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('❌ [updatePageContent] Update failed:', error);
-      throw error;
-    }
+    // Using PATCH /page_content?id=eq.{id}
+    const data = await supabaseFetch(
+      `page_content?id=eq.${id}`,
+      'PATCH',
+      updates
+    );
 
     console.log('✅ [updatePageContent] Update successful:', data);
-    return data;
+    return data?.[0]; // Supabase REST returns an array
   } catch (err) {
     console.error('❌ [updatePageContent] Critical error:', err);
     throw err;
@@ -203,35 +250,35 @@ export async function updatePageContent(
 }
 
 export async function createPageContent(content: Omit<PageContent, 'id' | 'created_at' | 'updated_at'>) {
-  console.log('➕ [createPageContent] Creating new content:', content);
+  try {
+    console.log('➕ [createPageContent] Creating new content:', content);
 
-  const { data, error } = await supabase
-    .from('page_content')
-    .insert([content])
-    .select()
-    .single();
+    const data = await supabaseFetch(
+      'page_content',
+      'POST',
+      content
+    );
 
-  if (error) {
-    console.error('❌ [createPageContent] Creation failed:', error);
-    throw error;
+    console.log('✅ [createPageContent] Creation successful:', data);
+    return data?.[0];
+  } catch (err) {
+    console.error('❌ [createPageContent] Critical error:', err);
+    throw err;
   }
-
-  console.log('✅ [createPageContent] Creation successful:', data);
-  return data;
 }
 
 export async function deletePageContent(id: string) {
-  console.log('🗑️ [deletePageContent] Deleting content:', id);
+  try {
+    console.log('🗑️ [deletePageContent] Deleting content:', id);
 
-  const { error } = await supabase
-    .from('page_content')
-    .delete()
-    .eq('id', id);
+    await supabaseFetch(
+      `page_content?id=eq.${id}`,
+      'DELETE'
+    );
 
-  if (error) {
-    console.error('❌ [deletePageContent] Deletion failed:', error);
-    throw error;
+    console.log('✅ [deletePageContent] Deletion successful');
+  } catch (err) {
+    console.error('❌ [deletePageContent] Critical error:', err);
+    throw err;
   }
-
-  console.log('✅ [deletePageContent] Deletion successful');
 }

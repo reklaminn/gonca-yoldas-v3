@@ -1,4 +1,6 @@
 import { toast } from 'sonner';
+import { useAuthStore } from '@/store/authStore';
+import { supabase } from '@/lib/supabaseClient';
 
 export interface PaymentMethod {
   id: string;
@@ -27,30 +29,126 @@ export interface IyzilinkConfig {
   instructions: string;
 }
 
-/**
- * Get all payment methods (admin only) - DIRECT FETCH VERSION
- */
-export async function getAllPaymentMethods(): Promise<PaymentMethod[]> {
+// --- TOKEN YÖNETİMİ (MANUEL REFRESH) ---
+
+const STORAGE_KEY = 'sb-jlwsapdvizzriomadhxj-auth-token';
+
+function getStoredSession() {
   try {
-    console.log('🔵 [PaymentSettings] Fetching all payment methods with direct fetch...');
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('❌ [PaymentSettings] LocalStorage read error:', e);
+  }
+  return null;
+}
+
+async function refreshAuthTokenManual() {
+  console.log('🔄 [PaymentSettings] Token yenileniyor...');
+  const session = getStoredSession();
+  
+  if (!session || !session.refresh_token) {
+    throw new Error('No refresh token available');
+  }
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+    method: 'POST',
+    headers: {
+      'apikey': supabaseKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ refresh_token: session.refresh_token }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Token refresh failed');
+  }
+
+  const data = await response.json();
+  console.log('✅ [PaymentSettings] Token yenilendi!');
+
+  // LocalStorage güncelle
+  const newSession = {
+    ...session,
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at: Math.floor(Date.now() / 1000) + data.expires_in,
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(newSession));
+  
+  // Store'u güncelle
+  useAuthStore.getState().setSession(newSession);
+
+  return data.access_token;
+}
+
+async function getAuthTokenSafely() {
+  // 1. Önce Store'dan bak
+  const storeSession = useAuthStore.getState().session;
+  if (storeSession?.access_token) {
+    return storeSession.access_token;
+  }
+
+  // 2. LocalStorage'dan bak
+  const session = getStoredSession();
+  if (session?.access_token) {
+    return session.access_token;
+  }
+
+  return null;
+}
+
+/**
+ * Get all payment methods (admin only) - WITH RETRY LOGIC
+ */
+export async function getAllPaymentMethods(retryCount = 0): Promise<PaymentMethod[]> {
+  try {
+    console.log(`🔵 [PaymentSettings] Fetching all payment methods (Attempt: ${retryCount + 1})...`);
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+    let accessToken = await getAuthTokenSafely();
+
+    // Token yoksa ve ilk denemeyse, yenilemeyi dene
+    if (!accessToken && retryCount === 0) {
+      try {
+        accessToken = await refreshAuthTokenManual();
+      } catch (e) {
+        console.warn('⚠️ [PaymentSettings] Initial refresh failed, continuing with anon key');
+      }
+    }
+
+    const authHeader = accessToken ? `Bearer ${accessToken}` : `Bearer ${supabaseKey}`;
     const url = `${supabaseUrl}/rest/v1/payment_settings?order=payment_method.asc`;
     
-    console.log('🔵 [PaymentSettings] Fetching from:', url);
-
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
+        'Authorization': authHeader,
         'Content-Type': 'application/json',
       }
     });
 
-    console.log('🔵 [PaymentSettings] Response status:', response.status);
+    // 401 Hatası ve Retry Hakkı Varsa -> Token Yenile ve Tekrar Dene
+    if (response.status === 401 && retryCount < 1) {
+      console.warn('⚠️ [PaymentSettings] 401 Unauthorized. Refreshing token and retrying...');
+      try {
+        await refreshAuthTokenManual();
+        return getAllPaymentMethods(retryCount + 1);
+      } catch (refreshError) {
+        console.error('❌ [PaymentSettings] Retry failed:', refreshError);
+        // Retry başarısız olsa bile hatayı fırlatmayıp boş dizi dönelim ki sayfa çökmesin
+        toast.error('Oturum süreniz doldu. Lütfen sayfayı yenileyin.');
+        return [];
+      }
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -70,29 +168,26 @@ export async function getAllPaymentMethods(): Promise<PaymentMethod[]> {
 }
 
 /**
- * Get active payment methods (public - for checkout page) - DIRECT FETCH VERSION
+ * Get active payment methods (public - for checkout page)
+ * Usually public, so uses Anon Key mostly, but we'll keep it safe.
  */
 export async function getActivePaymentMethods(): Promise<PaymentMethod[]> {
   try {
-    console.log('🔵 [PaymentSettings] Fetching active payment methods with direct fetch...');
+    console.log('🔵 [PaymentSettings] Fetching active payment methods...');
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
     const url = `${supabaseUrl}/rest/v1/payment_settings?is_active=eq.true&order=payment_method.asc`;
     
-    console.log('🔵 [PaymentSettings] Fetching from:', url);
-
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
+        'Authorization': `Bearer ${supabaseKey}`, // Public read usually allows anon
         'Content-Type': 'application/json',
       }
     });
-
-    console.log('🔵 [PaymentSettings] Response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -101,8 +196,6 @@ export async function getActivePaymentMethods(): Promise<PaymentMethod[]> {
     }
 
     const data = await response.json();
-    console.log('✅ [PaymentSettings] Active payment methods fetched:', data?.length || 0, data);
-    
     return data || [];
   } catch (error: any) {
     console.error('❌ [PaymentSettings] Failed to fetch active payment methods:', error);
@@ -111,53 +204,59 @@ export async function getActivePaymentMethods(): Promise<PaymentMethod[]> {
 }
 
 /**
- * Update payment method configuration - DIRECT FETCH VERSION
+ * Update payment method configuration - WITH RETRY LOGIC
  */
 export async function updatePaymentMethod(
   id: string,
   updates: {
     is_active?: boolean;
     config?: CreditCardConfig | BankTransferConfig | IyzilinkConfig;
-  }
+  },
+  retryCount = 0
 ): Promise<boolean> {
   try {
-    console.log('🔵 [PaymentSettings] Updating payment method:', id);
+    console.log(`🔵 [PaymentSettings] Updating payment method: ${id} (Attempt: ${retryCount + 1})`);
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-    // Get auth token from localStorage (Zustand persist)
-    const authStorage = localStorage.getItem('auth-storage');
-    let accessToken = supabaseKey; // fallback to anon key
+    let accessToken = await getAuthTokenSafely();
     
-    if (authStorage) {
+    // Token yoksa yenilemeyi dene
+    if (!accessToken && retryCount === 0) {
       try {
-        const parsed = JSON.parse(authStorage);
-        if (parsed.state?.user?.access_token) {
-          accessToken = parsed.state.user.access_token;
-          console.log('🔵 [PaymentSettings] Using user access token');
-        }
+        accessToken = await refreshAuthTokenManual();
       } catch (e) {
-        console.warn('⚠️ [PaymentSettings] Could not parse auth storage');
+        console.warn('⚠️ [PaymentSettings] Initial refresh failed');
       }
     }
-
+    
+    const authHeader = accessToken ? `Bearer ${accessToken}` : `Bearer ${supabaseKey}`;
     const url = `${supabaseUrl}/rest/v1/payment_settings?id=eq.${id}`;
     
-    console.log('🔵 [PaymentSettings] Updating at:', url);
-
     const response = await fetch(url, {
       method: 'PATCH',
       headers: {
         'apikey': supabaseKey,
-        'Authorization': `Bearer ${accessToken}`,
+        'Authorization': authHeader,
         'Content-Type': 'application/json',
         'Prefer': 'return=representation'
       },
       body: JSON.stringify(updates)
     });
 
-    console.log('🔵 [PaymentSettings] Update response status:', response.status);
+    // 401 Hatası ve Retry Hakkı Varsa -> Token Yenile ve Tekrar Dene
+    if (response.status === 401 && retryCount < 1) {
+      console.warn('⚠️ [PaymentSettings] 401 Unauthorized during update. Refreshing token...');
+      try {
+        await refreshAuthTokenManual();
+        return updatePaymentMethod(id, updates, retryCount + 1);
+      } catch (refreshError) {
+        console.error('❌ [PaymentSettings] Retry failed:', refreshError);
+        toast.error('Oturum süreniz doldu. Lütfen tekrar giriş yapın.');
+        return false;
+      }
+    }
 
     if (!response.ok) {
       const errorText = await response.text();

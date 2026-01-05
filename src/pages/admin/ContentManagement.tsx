@@ -1,16 +1,25 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileText, Edit, Home, Users, Mail, Laptop, MessageSquareQuote, Globe } from 'lucide-react';
+import { FileText, Edit, Home, Users, Mail, Laptop, MessageSquareQuote, Globe, BookOpen } from 'lucide-react';
 
 const pages = [
+  {
+    key: 'blog',
+    title: 'Blog Yönetimi',
+    description: 'Blog yazılarını ekleyin, düzenleyin ve öne çıkarın',
+    icon: BookOpen,
+    color: 'from-rose-500 to-rose-600',
+    path: '/admin/content/blog'
+  },
   {
     key: 'global',
     title: 'Genel Ayarlar',
     description: 'Duyuru bandı ve site genelindeki metinleri düzenleyin',
     icon: Globe,
     color: 'from-indigo-500 to-indigo-600',
+    path: '/admin/content/global'
   },
   {
     key: 'home',
@@ -18,6 +27,7 @@ const pages = [
     description: 'Ana sayfa içeriğini düzenleyin',
     icon: Home,
     color: 'from-blue-500 to-blue-600',
+    path: '/admin/content/home'
   },
   {
     key: 'about',
@@ -25,6 +35,7 @@ const pages = [
     description: 'Hakkımızda sayfası içeriğini düzenleyin',
     icon: Users,
     color: 'from-purple-500 to-purple-600',
+    path: '/admin/content/about'
   },
   {
     key: 'contact',
@@ -32,6 +43,7 @@ const pages = [
     description: 'İletişim sayfası içeriğini düzenleyin',
     icon: Mail,
     color: 'from-green-500 to-green-600',
+    path: '/admin/content/contact'
   },
   {
     key: 'learning-platform',
@@ -39,6 +51,7 @@ const pages = [
     description: 'Öğrenme platformu sayfası içeriğini düzenleyin',
     icon: Laptop,
     color: 'from-orange-500 to-orange-600',
+    path: '/admin/content/learning-platform'
   },
   {
     key: 'testimonials',
@@ -46,6 +59,7 @@ const pages = [
     description: 'Veli yorumlarını yönetin',
     icon: MessageSquareQuote,
     color: 'from-pink-500 to-pink-600',
+    path: '/admin/content/testimonials'
   },
 ];
 
@@ -60,7 +74,7 @@ const ContentManagement: React.FC = () => {
           İçerik Yönetimi
         </h1>
         <p className="text-gray-500 dark:text-gray-400 mt-2">
-          Statik sayfa içeriklerini, duyuruları ve veli yorumlarını düzenleyin
+          Blog yazılarını, statik sayfa içeriklerini ve duyuruları düzenleyin
         </p>
       </div>
 
@@ -71,13 +85,13 @@ const ContentManagement: React.FC = () => {
           return (
             <Card
               key={page.key}
-              className="hover:shadow-lg transition-shadow cursor-pointer group"
-              onClick={() => navigate(`/admin/content/${page.key}`)}
+              className="hover:shadow-lg transition-shadow cursor-pointer group border-gray-200 dark:border-gray-800"
+              onClick={() => navigate(page.path)}
             >
               <CardHeader>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${page.color} flex items-center justify-center text-white`}>
+                    <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${page.color} flex items-center justify-center text-white shadow-md`}>
                       <Icon className="h-6 w-6" />
                     </div>
                     <div>
@@ -111,8 +125,8 @@ const ContentManagement: React.FC = () => {
                 İçerik Düzenleme Hakkında
               </CardTitle>
               <CardDescription className="text-blue-700 dark:text-blue-300 mt-2">
-                Bu sayfadan statik sayfa içeriklerini ve veli yorumlarını düzenleyebilirsiniz. 
-                Değişiklikler anında yayına alınır ve tüm kullanıcılar tarafından görülebilir.
+                Bu sayfadan tüm site içeriklerini yönetebilirsiniz. Blog yazılarınız anında "Blog" sayfasında listelenir.
+                Öne çıkan yazılar blog sayfasının en üstünde büyük kart olarak görünür.
               </CardDescription>
             </div>
           </div>

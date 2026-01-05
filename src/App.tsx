@@ -17,6 +17,7 @@ const About = React.lazy(() => import('./pages/marketing/About'));
 const Programs = React.lazy(() => import('./pages/marketing/Programs'));
 const ProgramDetail = React.lazy(() => import('./pages/marketing/ProgramDetail'));
 const Blog = React.lazy(() => import('./pages/marketing/Blog'));
+const BlogPost = React.lazy(() => import('./pages/marketing/BlogPost')); // Yeni eklendi
 const Contact = React.lazy(() => import('./pages/marketing/Contact'));
 const LearningPlatform = React.lazy(() => import('./pages/marketing/LearningPlatform'));
 const Checkout = React.lazy(() => import('./pages/marketing/Checkout'));
@@ -53,6 +54,9 @@ const AdminSettings = React.lazy(() => import('./pages/admin/Settings'));
 const ContentManagement = React.lazy(() => import('./pages/admin/ContentManagement'));
 const PageContentEditor = React.lazy(() => import('./pages/admin/PageContentEditor'));
 const TestimonialsManagement = React.lazy(() => import('./pages/admin/TestimonialsManagement'));
+const BlogManagement = React.lazy(() => import('./pages/admin/BlogManagement'));
+const BlogEditor = React.lazy(() => import('./pages/admin/BlogEditor'));
+const BlogCategories = React.lazy(() => import('./pages/admin/BlogCategories'));
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -287,6 +291,7 @@ function App() {
               <Route path="/programs" element={<Programs />} />
               <Route path="/programs/:slug" element={<ProgramDetail />} />
               <Route path="/blog" element={<Blog />} />
+              <Route path="/blog/:slug" element={<BlogPost />} /> {/* Yeni Route */}
               <Route path="/contact" element={<Contact />} />
               <Route path="/learning-platform" element={<LearningPlatform />} />
               <Route path="/siparis" element={<Checkout />} />
@@ -336,6 +341,10 @@ function App() {
               <Route path="orders" element={<AdminOrders />} />
               <Route path="settings" element={<AdminSettings />} />
               <Route path="content" element={<ContentManagement />} />
+              <Route path="content/blog" element={<BlogManagement />} />
+              <Route path="content/blog/new" element={<BlogEditor />} />
+              <Route path="content/blog/edit/:id" element={<BlogEditor />} />
+              <Route path="content/blog/categories" element={<BlogCategories />} />
               <Route path="content/:pageKey" element={<PageContentEditor />} />
               <Route path="content/testimonials" element={<TestimonialsManagement />} />
             </Route>

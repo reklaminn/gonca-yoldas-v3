@@ -8,14 +8,8 @@ import { useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const About: React.FC = () => {
-  // ✅ DÜZELTME: 'about' page_key kullanılıyor
   const { content, loading, error } = usePageContent('about');
   const navigate = useNavigate();
-
-  console.log('🎯 [About Page] Current content:', content);
-  console.log('🎯 [About Page] Content keys:', Object.keys(content));
-  console.log('🎯 [About Page] Loading:', loading);
-  console.log('🎯 [About Page] Error:', error);
 
   // Parse JSON content safely
   const parseJSON = (key: string, fallback: any = []) => {
@@ -45,7 +39,12 @@ const About: React.FC = () => {
 
   const parentPrograms = [parentProgram02, parentProgram25].filter(p => p.title);
 
-  const institutionalServicesWithIcons = institutionalServices.map((service: any, index: number) => ({
+  // Institutional services might be an object with items or an array directly
+  const institutionalServicesList = Array.isArray(institutionalServices) 
+    ? institutionalServices 
+    : (institutionalServices.items || []);
+
+  const institutionalServicesWithIcons = institutionalServicesList.map((service: any, index: number) => ({
     ...service,
     icon: [BookOpen, Users, MessageCircle, Briefcase][index] || BookOpen
   }));
@@ -65,6 +64,16 @@ const About: React.FC = () => {
     }
   };
 
+  // Helper to ensure readable contrast for badges
+  const getSafeGradient = (age: string, originalColor: string) => {
+    if (!age) return originalColor;
+    // Force darker gradients for specific age groups to ensure white text is readable
+    if (age.includes('0-2')) return 'from-pink-500 to-rose-500';
+    if (age.includes('6-10')) return 'from-purple-600 to-indigo-600';
+    if (age.includes('2-5')) return 'from-blue-500 to-cyan-600';
+    return originalColor;
+  };
+
   // Loading state
   if (loading) {
     return (
@@ -72,7 +81,6 @@ const About: React.FC = () => {
         <div className="text-center">
           <Loader2 className="h-12 w-12 animate-spin text-[var(--color-primary)] mx-auto mb-4" />
           <p className="text-[var(--fg-muted)]">İçerik yükleniyor...</p>
-          <p className="text-xs text-[var(--fg-muted)] mt-2">Page: about</p>
         </div>
       </div>
     );
@@ -87,7 +95,6 @@ const About: React.FC = () => {
           <AlertTitle>İçerik Yükleme Hatası</AlertTitle>
           <AlertDescription>
             <p className="mb-2">{error}</p>
-            <p className="text-sm">Lütfen sayfayı yenileyin veya daha sonra tekrar deneyin.</p>
             <Button 
               variant="outline" 
               size="sm" 
@@ -95,35 +102,6 @@ const About: React.FC = () => {
               onClick={() => window.location.reload()}
             >
               Sayfayı Yenile
-            </Button>
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
-  // Empty content state
-  if (Object.keys(content).length === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--bg)] p-4">
-        <Alert className="max-w-2xl">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>İçerik Bulunamadı</AlertTitle>
-          <AlertDescription>
-            <p className="mb-2">Bu sayfa için henüz içerik eklenmemiş.</p>
-            <p className="text-sm text-[var(--fg-muted)]">
-              Admin panelinden içerik ekleyebilirsiniz.
-            </p>
-            <p className="text-xs text-[var(--fg-muted)] mt-2 font-mono">
-              Page Key: about
-            </p>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="mt-4"
-              onClick={() => navigate('/admin/content')}
-            >
-              Admin Paneline Git
             </Button>
           </AlertDescription>
         </Alert>
@@ -184,7 +162,7 @@ const About: React.FC = () => {
         <div className="max-w-4xl mx-auto">
           <Card className="border-[var(--border)] bg-[var(--bg-card)]">
             <CardContent className="pt-8">
-              <div className="prose prose-lg max-w-none text-[var(--fg-muted)]">
+              <div className="prose prose-lg max-w-none text-gray-600 dark:text-gray-300">
                 <p 
                   className="text-lg leading-relaxed mb-6"
                   dangerouslySetInnerHTML={{ __html: content.bio_paragraph_1 || '' }}
@@ -208,7 +186,7 @@ const About: React.FC = () => {
       >
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold text-[var(--fg)] mb-4">
+            <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
               {content.credentials_title || 'Eğitim ve Sertifikalar'}
             </h2>
           </div>
@@ -223,10 +201,10 @@ const About: React.FC = () => {
                       <div className="mx-auto bg-gradient-to-br from-blue-500 to-purple-500 w-16 h-16 rounded-full flex items-center justify-center mb-4">
                         <Icon className="h-8 w-8 text-white" />
                       </div>
-                      <CardTitle className="text-xl text-[var(--fg)]">{cred.title}</CardTitle>
+                      <CardTitle className="text-xl text-gray-900 dark:text-white">{cred.title}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <ul className="space-y-2 text-[var(--fg-muted)]">
+                      <ul className="space-y-2 text-gray-600 dark:text-gray-300">
                         {cred.items?.map((item: string, i: number) => (
                           <li key={i} className="text-sm leading-relaxed">{item}</li>
                         ))}
@@ -250,7 +228,7 @@ const About: React.FC = () => {
       >
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold text-[var(--fg)] mb-4">
+            <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
               {content.bilingual_title || 'Çift Dilli Eğitim ve Ebeveyn Rehberliği'}
             </h2>
           </div>
@@ -263,7 +241,7 @@ const About: React.FC = () => {
                 </div>
                 <div className="flex-1">
                   <p 
-                    className="text-lg leading-relaxed text-[var(--fg-muted)]"
+                    className="text-lg leading-relaxed text-gray-600 dark:text-gray-300"
                     dangerouslySetInnerHTML={{ __html: content.bilingual_paragraph_1 || '' }}
                   />
                 </div>
@@ -274,7 +252,7 @@ const About: React.FC = () => {
                 </div>
                 <div className="flex-1">
                   <p 
-                    className="text-lg leading-relaxed text-[var(--fg-muted)]"
+                    className="text-lg leading-relaxed text-gray-600 dark:text-gray-300"
                     dangerouslySetInnerHTML={{ __html: content.bilingual_paragraph_2 || '' }}
                   />
                 </div>
@@ -294,45 +272,48 @@ const About: React.FC = () => {
         >
           <div className="container mx-auto px-4">
             <div className="text-center mb-12">
-              <h2 className="text-4xl font-bold text-[var(--fg)] mb-4">
+              <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
                 {content.parent_programs_title || 'Ebeveynler İçin Programlar'}
               </h2>
-              <p className="text-xl text-[var(--fg-muted)]">
+              <p className="text-xl text-gray-600 dark:text-gray-300">
                 {content.parent_programs_subtitle || 'Evde İngilizce konuşmak isteyen ebeveynler için özel olarak geliştirilmiş çift dilli eğitimler'}
               </p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto">
-              {parentPrograms.map((program, index) => (
-                <motion.div key={index} variants={fadeIn} transition={{ duration: 0.5 }}>
-                  <Card className="h-full border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
-                    <div className={`h-2 bg-gradient-to-r ${program.color}`}></div>
-                    <CardHeader>
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className={`bg-gradient-to-r ${program.color} px-4 py-1 rounded-full`}>
-                          <span className="text-white font-semibold text-sm">{program.age}</span>
+              {parentPrograms.map((program, index) => {
+                const gradientClass = getSafeGradient(program.age, program.color);
+                return (
+                  <motion.div key={index} variants={fadeIn} transition={{ duration: 0.5 }}>
+                    <Card className="h-full border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+                      <div className={`h-2 bg-gradient-to-r ${gradientClass}`}></div>
+                      <CardHeader>
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className={`bg-gradient-to-r ${gradientClass} px-4 py-1 rounded-full shadow-sm`}>
+                            <span className="text-white font-semibold text-sm drop-shadow-md">{program.age}</span>
+                          </div>
                         </div>
-                      </div>
-                      <CardTitle className="text-2xl text-[var(--fg)]">{program.title}</CardTitle>
-                      <CardDescription className="text-base text-[var(--fg-muted)]">
-                        {program.description}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <ul className="space-y-3">
-                        {program.features?.map((feature: string, i: number) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <div className={`bg-gradient-to-r ${program.color} w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5`}>
-                              <span className="text-white text-xs">✓</span>
-                            </div>
-                            <span className="text-[var(--fg-muted)]">{feature}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
+                        <CardTitle className="text-2xl text-gray-900 dark:text-white">{program.title}</CardTitle>
+                        <CardDescription className="text-base text-gray-600 dark:text-gray-300">
+                          {program.description}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <ul className="space-y-3">
+                          {program.features?.map((feature: string, i: number) => (
+                            <li key={i} className="flex items-start gap-2">
+                              <div className={`bg-gradient-to-r ${gradientClass} w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5`}>
+                                <span className="text-white text-xs font-bold">✓</span>
+                              </div>
+                              <span className="text-gray-600 dark:text-gray-300">{feature}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                );
+              })}
             </div>
           </div>
         </motion.section>
@@ -349,21 +330,21 @@ const About: React.FC = () => {
         >
           <div className="max-w-4xl mx-auto">
             <div className="text-center mb-12">
-              <h2 className="text-4xl font-bold text-[var(--fg)] mb-4">
+              <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
                 {content.children_course_title || 'Çocuklar İçin Online Kurslar'}
               </h2>
             </div>
 
             <Card className="border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
-              <div className={`h-3 bg-gradient-to-r ${childrenCourse.color}`}></div>
+              <div className={`h-3 bg-gradient-to-r ${getSafeGradient(childrenCourse.age, childrenCourse.color)}`}></div>
               <CardHeader className="text-center">
                 <div className="flex justify-center mb-4">
-                  <div className={`bg-gradient-to-r ${childrenCourse.color} px-6 py-2 rounded-full`}>
-                    <span className="text-white font-bold text-lg">{childrenCourse.age}</span>
+                  <div className={`bg-gradient-to-r ${getSafeGradient(childrenCourse.age, childrenCourse.color)} px-6 py-2 rounded-full shadow-sm`}>
+                    <span className="text-white font-bold text-lg drop-shadow-md">{childrenCourse.age}</span>
                   </div>
                 </div>
-                <CardTitle className="text-3xl text-[var(--fg)]">{childrenCourse.title}</CardTitle>
-                <CardDescription className="text-lg text-[var(--fg-muted)]">
+                <CardTitle className="text-3xl text-gray-900 dark:text-white">{childrenCourse.title}</CardTitle>
+                <CardDescription className="text-lg text-gray-600 dark:text-gray-300">
                   {childrenCourse.description}
                 </CardDescription>
               </CardHeader>
@@ -371,10 +352,10 @@ const About: React.FC = () => {
                 <div className="grid md:grid-cols-2 gap-4">
                   {childrenCourse.features?.map((feature: string, i: number) => (
                     <div key={i} className="flex items-start gap-3 p-4 rounded-lg bg-[var(--bg-elev)]">
-                      <div className={`bg-gradient-to-r ${childrenCourse.color} w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5`}>
+                      <div className={`bg-gradient-to-r ${getSafeGradient(childrenCourse.age, childrenCourse.color)} w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5`}>
                         <span className="text-white text-sm font-bold">✓</span>
                       </div>
-                      <span className="text-[var(--fg)]">{feature}</span>
+                      <span className="text-gray-900 dark:text-white">{feature}</span>
                     </div>
                   ))}
                 </div>
@@ -394,10 +375,10 @@ const About: React.FC = () => {
         >
           <div className="container mx-auto px-4">
             <div className="text-center mb-12">
-              <h2 className="text-4xl font-bold text-[var(--fg)] mb-4">
+              <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
                 {content.institutional_title || 'Okul ve Kurumlar İçin Danışmanlık'}
               </h2>
-              <p className="text-xl text-[var(--fg-muted)]">
+              <p className="text-xl text-gray-600 dark:text-gray-300">
                 {content.institutional_subtitle || 'Anaokulları ve ilkokullar için profesyonel destek hizmetleri'}
               </p>
             </div>
@@ -412,10 +393,10 @@ const About: React.FC = () => {
                         <div className="mx-auto bg-gradient-to-br from-green-500 to-teal-500 w-16 h-16 rounded-full flex items-center justify-center mb-4">
                           <Icon className="h-8 w-8 text-white" />
                         </div>
-                        <CardTitle className="text-lg text-[var(--fg)]">{service.title}</CardTitle>
+                        <CardTitle className="text-lg text-gray-900 dark:text-white">{service.title}</CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <CardDescription className="text-base text-[var(--fg-muted)]">
+                        <CardDescription className="text-base text-gray-600 dark:text-gray-300">
                           {service.description}
                         </CardDescription>
                       </CardContent>
@@ -501,7 +482,7 @@ const About: React.FC = () => {
                 className="text-lg px-8 py-6 bg-white/10 hover:bg-white/20 text-white border-white/30"
                 onClick={() => navigate('/contact')}
               >
-                {content.cta_button_secondary || 'İletişime Geç'}
+                {content.cta_button_secondary || 'Email Bülten Kayıt Ol'}
               </Button>
             </div>
           </div>

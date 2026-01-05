@@ -156,10 +156,10 @@ const LearningPlatform: React.FC = () => {
       >
         <div className="bg-gradient-primary rounded-2xl p-8 md:p-12 text-white">
           <div className="max-w-3xl mx-auto text-center mb-8">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-white/90">
               Her Cihazda, Her Yerde
             </h2>
-            <p className="text-lg opacity-90">
+            <p className="text-lg opacity-90 text-white/90">
               Bilgisayar, tablet veya telefon - istediğiniz cihazdan erişin
             </p>
           </div>
@@ -335,10 +335,10 @@ const LearningPlatform: React.FC = () => {
           <div className="container mx-auto px-4">
             <div className="max-w-3xl mx-auto text-center">
               <Shield className="h-16 w-16 mx-auto mb-6" />
-              <h2 className="text-4xl font-bold mb-6">
+              <h2 className="text-4xl font-bold mb-6 text-white/90">
                 {content.security_title}
               </h2>
-              <p className="text-xl opacity-90 mb-8">
+              <p className="text-xl opacity-90 mb-8 text-white/90">
                 {content.security_description}
               </p>
               <div className="grid md:grid-cols-3 gap-6 text-left">
@@ -349,8 +349,8 @@ const LearningPlatform: React.FC = () => {
                   transition={{ duration: 0.5, delay: 0.1 }}
                   className="bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-6"
                 >
-                  <h3 className="font-semibold text-lg mb-2">SSL Şifreleme</h3>
-                  <p className="opacity-90">Tüm veriler şifreli olarak iletilir</p>
+                  <h3 className="font-semibold text-lg mb-2 text-white/90">SSL Şifreleme</h3>
+                  <p className="opacity-90 text-white/90">Tüm veriler şifreli olarak iletilir</p>
                 </motion.div>
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }}
@@ -359,8 +359,8 @@ const LearningPlatform: React.FC = () => {
                   transition={{ duration: 0.5, delay: 0.2 }}
                   className="bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-6"
                 >
-                  <h3 className="font-semibold text-lg mb-2">KVKK Uyumlu</h3>
-                  <p className="opacity-90">Kişisel veriler korunur</p>
+                  <h3 className="font-semibold text-lg mb-2 text-white/90">KVKK Uyumlu</h3>
+                  <p className="opacity-90 text-white/90">Kişisel veriler korunur</p>
                 </motion.div>
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }}
@@ -369,8 +369,8 @@ const LearningPlatform: React.FC = () => {
                   transition={{ duration: 0.5, delay: 0.3 }}
                   className="bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-6"
                 >
-                  <h3 className="font-semibold text-lg mb-2">Düzenli Yedekleme</h3>
-                  <p className="opacity-90">Verileriniz güvende</p>
+                  <h3 className="font-semibold text-lg mb-2 text-white/90">Düzenli Yedekleme</h3>
+                  <p className="opacity-90 text-white/90">Verileriniz güvende</p>
                 </motion.div>
               </div>
             </div>

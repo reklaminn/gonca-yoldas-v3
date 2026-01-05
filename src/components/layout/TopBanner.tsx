@@ -73,8 +73,7 @@ const TopBanner: React.FC = () => {
                   transition={{ duration: 0.3, ease: "easeOut" }}
                   className="flex items-center justify-center gap-2 absolute inset-0"
                 >
-                  <Sparkles className="h-3.5 w-3.5 text-accent animate-pulse shrink-0" />
-                  <p className="text-sm font-medium text-center truncate px-4">
+                  <p className="text-sm font-medium text-center truncate px-4 text-white">
                     {announcements[currentIndex]}
                   </p>
                 </motion.div>

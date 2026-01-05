@@ -1,17 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Facebook, Instagram, Twitter, Mail, Phone, MapPin, Shield } from 'lucide-react';
+import { Facebook, Instagram, Mail, Phone, MapPin, Shield } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuthStore } from '@/store/authStore';
+import { usePrograms } from '@/hooks/usePrograms';
+import { getGeneralSettings, GeneralSettings } from '@/services/generalSettings';
 
 const Footer: React.FC = () => {
   const navigate = useNavigate();
   const [logoError, setLogoError] = useState(false);
   const { resolvedTheme } = useTheme();
   const { user, profile } = useAuthStore();
+  
+  // Veritabanından aktif programları çekiyoruz
+  const { programs, loading: programsLoading } = usePrograms('active');
+  
+  // İletişim bilgilerini çekiyoruz
+  const [settings, setSettings] = useState<GeneralSettings | null>(null);
 
-  // ✅ FIX: Correct role check using profile from Zustand
+  useEffect(() => {
+    getGeneralSettings().then(setSettings);
+  }, []);
+
   const isAdmin = profile?.role === 'admin';
 
   const logoUrl = "https://www.goncayoldas.com/contents/img/logogoncayoldas2.png";
@@ -22,12 +33,6 @@ const Footer: React.FC = () => {
   };
 
   const footerLinks = {
-    programs: [
-      { name: 'Baby English (0-2 Yaş)', href: '/programs/baby-english' },
-      { name: 'Toddler English (2-4 Yaş)', href: '/programs/toddler-english' },
-      { name: 'Kids English (4-6 Yaş)', href: '/programs/kids-english' },
-      { name: 'Junior English (6-12 Yaş)', href: '/programs/junior-english' },
-    ],
     company: [
       { name: 'Hakkımızda', href: '/about' },
       { name: 'Blog', href: '/blog' },
@@ -44,7 +49,6 @@ const Footer: React.FC = () => {
   const socialLinks = [
     { icon: Facebook, href: 'https://facebook.com', label: 'Facebook' },
     { icon: Instagram, href: 'https://instagram.com', label: 'Instagram' },
-    { icon: Twitter, href: 'https://twitter.com', label: 'Twitter' },
   ];
 
   return (
@@ -100,7 +104,7 @@ const Footer: React.FC = () => {
             </button>
 
             <p className="text-sm mb-4" style={{ color: 'var(--fg-muted)' }}>
-              Çocukların dil gelişimini destekleyen, bilimsel yöntemlerle tasarlanmış eğitim programları.
+              {settings?.site_description || 'Çocukların dil gelişimini destekleyen, bilimsel yöntemlerle tasarlanmış eğitim programları.'}
             </p>
             <div className="flex gap-3">
               {socialLinks.map((social) => (
@@ -122,23 +126,34 @@ const Footer: React.FC = () => {
             </div>
           </div>
 
-          {/* Programs */}
+          {/* Programs - DYNAMIC */}
           <div>
             <h4 className="font-poppins font-semibold mb-4" style={{ color: 'var(--fg)' }}>
               Eğitimler
             </h4>
             <ul className="space-y-2">
-              {footerLinks.programs.map((link) => (
-                <li key={link.name}>
-                  <button
-                    onClick={() => navigate(link.href)}
-                    className="text-sm transition-colors hover:text-[var(--color-primary)]"
-                    style={{ color: 'var(--fg-muted)' }}
-                  >
-                    {link.name}
-                  </button>
-                </li>
-              ))}
+              {programsLoading ? (
+                // Loading state skeleton
+                <>
+                  <li className="h-4 w-32 bg-[var(--bg-elev)] animate-pulse rounded"></li>
+                  <li className="h-4 w-24 bg-[var(--bg-elev)] animate-pulse rounded"></li>
+                  <li className="h-4 w-28 bg-[var(--bg-elev)] animate-pulse rounded"></li>
+                </>
+              ) : programs.length > 0 ? (
+                programs.map((program) => (
+                  <li key={program.id}>
+                    <button
+                      onClick={() => handleNavigation(`/programs/${program.slug}`)}
+                      className="text-sm transition-colors hover:text-[var(--color-primary)] text-left"
+                      style={{ color: 'var(--fg-muted)' }}
+                    >
+                      {program.title_tr || program.title}
+                    </button>
+                  </li>
+                ))
+              ) : (
+                <li className="text-sm text-[var(--fg-muted)]">Program bulunamadı</li>
+              )}
             </ul>
           </div>
 
@@ -151,7 +166,7 @@ const Footer: React.FC = () => {
               {footerLinks.company.map((link) => (
                 <li key={link.name}>
                   <button
-                    onClick={() => navigate(link.href)}
+                    onClick={() => handleNavigation(link.href)}
                     className="text-sm transition-colors hover:text-[var(--color-primary)]"
                     style={{ color: 'var(--fg-muted)' }}
                   >
@@ -159,11 +174,11 @@ const Footer: React.FC = () => {
                   </button>
                 </li>
               ))}
-              {/* ✅ FIX: Admin Panel Link - Only visible to admins */}
+              {/* Admin Panel Link - Only visible to admins */}
               {isAdmin && (
                 <li>
                   <button
-                    onClick={() => navigate('/admin')}
+                    onClick={() => handleNavigation('/admin')}
                     className="text-sm transition-colors hover:text-[var(--color-primary)] flex items-center gap-2"
                     style={{ color: 'var(--fg-muted)' }}
                   >
@@ -175,7 +190,7 @@ const Footer: React.FC = () => {
             </ul>
           </div>
 
-          {/* Contact */}
+          {/* Contact - DYNAMIC */}
           <div>
             <h4 className="font-poppins font-semibold mb-4" style={{ color: 'var(--fg)' }}>
               İletişim
@@ -183,15 +198,15 @@ const Footer: React.FC = () => {
             <ul className="space-y-3">
               <li className="flex items-start gap-2 text-sm" style={{ color: 'var(--fg-muted)' }}>
                 <Mail className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: 'var(--color-accent)' }} />
-                <span>info@goncayoldas.com</span>
+                <span>{settings?.contact_email || 'info@goncayoldas.com'}</span>
               </li>
               <li className="flex items-start gap-2 text-sm" style={{ color: 'var(--fg-muted)' }}>
                 <Phone className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: 'var(--color-accent)' }} />
-                <span>+90 (555) 123 45 67</span>
+                <span>{settings?.phone || '+90 (555) 123 45 67'}</span>
               </li>
               <li className="flex items-start gap-2 text-sm" style={{ color: 'var(--fg-muted)' }}>
                 <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: 'var(--color-accent)' }} />
-                <span>İstanbul, Türkiye</span>
+                <span className="whitespace-pre-line">{settings?.address || 'İstanbul, Türkiye'}</span>
               </li>
             </ul>
           </div>
@@ -203,13 +218,13 @@ const Footer: React.FC = () => {
           style={{ borderColor: 'var(--border)' }}
         >
           <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>
-            © {new Date().getFullYear()} Gonca Yoldaş. Tüm hakları saklıdır.
+            © {new Date().getFullYear()} {settings?.site_name || 'Gonca Yoldaş'}. Tüm hakları saklıdır.
           </p>
           <div className="flex gap-6">
             {footerLinks.legal.map((link) => (
               <button
                 key={link.name}
-                onClick={() => navigate(link.href)}
+                onClick={() => handleNavigation(link.href)}
                 className="text-sm transition-colors hover:text-[var(--color-primary)]"
                 style={{ color: 'var(--fg-muted)' }}
               >

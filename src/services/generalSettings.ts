@@ -1,4 +1,5 @@
 import { toast } from 'sonner';
+import { useAuthStore } from '@/store/authStore';
 
 export interface GeneralSettings {
   id: string;
@@ -7,6 +8,8 @@ export interface GeneralSettings {
   site_description: string;
   contact_email: string;
   support_email: string;
+  address: string; // Yeni eklenen alan
+  phone: string;   // Yeni eklenen alan
   timezone: string;
   language: string;
   maintenance_mode_active: boolean;
@@ -23,26 +26,22 @@ export interface GeneralSettings {
  */
 export async function getGeneralSettings(): Promise<GeneralSettings | null> {
   try {
-    console.log('🔵 [GeneralSettings] Fetching general settings with direct fetch...');
+    // console.log('🔵 [GeneralSettings] Fetching general settings with direct fetch...');
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
     const url = `${supabaseUrl}/rest/v1/general_settings?limit=1`;
     
-    console.log('🔵 [GeneralSettings] Fetching from:', url);
-
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'apikey': supabaseKey,
         'Authorization': `Bearer ${supabaseKey}`,
         'Content-Type': 'application/json',
-        'Accept': 'application/vnd.pgrst.object+json' // Request single object instead of array
+        'Accept': 'application/vnd.pgrst.object+json'
       }
     });
-
-    console.log('🔵 [GeneralSettings] Response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -51,12 +50,10 @@ export async function getGeneralSettings(): Promise<GeneralSettings | null> {
     }
 
     const data = await response.json();
-    console.log('✅ [GeneralSettings] General settings fetched:', data);
-    
     return data;
   } catch (error: any) {
     console.error('❌ [GeneralSettings] Failed to fetch general settings:', error);
-    toast.error('Genel ayarlar yüklenemedi');
+    // toast.error('Genel ayarlar yüklenemedi'); // Kullanıcıyı her sayfada rahatsız etmemek için kapattım
     return null;
   }
 }
@@ -70,43 +67,27 @@ export async function updateGeneralSettings(
 ): Promise<boolean> {
   try {
     console.log('🔵 [GeneralSettings] Updating general settings:', id);
-    console.log('📝 [GeneralSettings] Updates to apply:', updates);
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-    // Get auth token from localStorage (Zustand persist)
-    const authStorage = localStorage.getItem('auth-storage');
-    let accessToken = supabaseKey; // fallback to anon key
+    const session = useAuthStore.getState().session;
+    const accessToken = session?.access_token;
     
-    if (authStorage) {
-      try {
-        const parsed = JSON.parse(authStorage);
-        if (parsed.state?.user?.access_token) {
-          accessToken = parsed.state.user.access_token;
-          console.log('🔵 [GeneralSettings] Using user access token');
-        }
-      } catch (e) {
-        console.warn('⚠️ [GeneralSettings] Could not parse auth storage');
-      }
-    }
-
+    const authHeader = accessToken ? `Bearer ${accessToken}` : `Bearer ${supabaseKey}`;
+    
     const url = `${supabaseUrl}/rest/v1/general_settings?id=eq.${id}`;
     
-    console.log('🔵 [GeneralSettings] Updating at:', url);
-
     const response = await fetch(url, {
       method: 'PATCH',
       headers: {
         'apikey': supabaseKey,
-        'Authorization': `Bearer ${accessToken}`,
+        'Authorization': authHeader,
         'Content-Type': 'application/json',
         'Prefer': 'return=representation'
       },
       body: JSON.stringify(updates)
     });
-
-    console.log('🔵 [GeneralSettings] Update response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -115,9 +96,6 @@ export async function updateGeneralSettings(
       return false;
     }
 
-    const data = await response.json();
-    console.log('✅ [GeneralSettings] General settings updated:', data);
-    
     toast.success('Genel ayarlar güncellendi');
     return true;
   } catch (error: any) {
@@ -127,41 +105,30 @@ export async function updateGeneralSettings(
   }
 }
 
-/**
- * Check if coupons are enabled (public function for checkout page)
- */
+// Helper functions remain the same
 export async function isCouponEnabled(): Promise<boolean> {
   try {
     const settings = await getGeneralSettings();
-    return settings?.coupon_enabled ?? true; // Default to true if not found
+    return settings?.coupon_enabled ?? true;
   } catch (error: any) {
-    console.error('❌ [GeneralSettings] Failed to check coupon status:', error);
-    return true; // Default to enabled on error
+    return true;
   }
 }
 
-/**
- * Check if invoice fields are enabled (public function for checkout page)
- */
 export async function isInvoiceEnabled(): Promise<boolean> {
   try {
     const settings = await getGeneralSettings();
-    return settings?.invoice_enabled ?? true; // Default to true if not found
+    return settings?.invoice_enabled ?? true;
   } catch (error: any) {
-    console.error('❌ [GeneralSettings] Failed to check invoice status:', error);
-    return true; // Default to enabled on error
+    return true;
   }
 }
 
-/**
- * Check if prices should be shown with VAT (public function for checkout and pricing pages)
- */
 export async function shouldShowPricesWithVAT(): Promise<boolean> {
   try {
     const settings = await getGeneralSettings();
-    return settings?.show_prices_with_vat ?? true; // Default to true (show with VAT) if not found
+    return settings?.show_prices_with_vat ?? true;
   } catch (error: any) {
-    console.error('❌ [GeneralSettings] Failed to check VAT display status:', error);
-    return true; // Default to showing with VAT on error
+    return true;
   }
 }

@@ -1,290 +1,362 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { Link, useParams } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { motion, useScroll, useSpring } from 'framer-motion';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, Clock, Share2, Facebook, Twitter, Linkedin, ArrowLeft } from 'lucide-react';
+import { 
+  Calendar, Clock, Facebook, Twitter, Linkedin, 
+  Loader2, AlertCircle, ChevronRight, Link as LinkIcon,
+  BookOpen
+} from 'lucide-react';
+import { format } from 'date-fns';
+import { tr } from 'date-fns/locale';
+import { toast } from 'sonner';
+
+// --- Types ---
+interface BlogPostDetail {
+  id: string;
+  title: string;
+  slug: string;
+  content: string;
+  image_url: string;
+  created_at: string;
+  read_time: string;
+  category: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+}
+
+interface TocItem {
+  id: string;
+  text: string;
+}
+
+// --- Helper: Generate TOC & Inject IDs ---
+const processContent = (htmlContent: string): { processedContent: string; toc: TocItem[] } => {
+  const toc: TocItem[] = [];
+  const processedContent = htmlContent.replace(/<h2(.*?)>(.*?)<\/h2>/g, (match, attrs, text) => {
+    const cleanText = text.replace(/<[^>]*>/g, '');
+    const id = cleanText
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-');
+
+    toc.push({ id, text: cleanText });
+    return `<h2 id="${id}"${attrs}>${text}</h2>`;
+  });
+
+  return { processedContent, toc };
+};
 
 const BlogPost: React.FC = () => {
   const { slug } = useParams();
+  const navigate = useNavigate();
+  const { scrollYProgress } = useScroll();
+  const scaleX = useSpring(scrollYProgress, {
+    stiffness: 100,
+    damping: 30,
+    restDelta: 0.001
+  });
+  
+  const [post, setPost] = useState<BlogPostDetail | null>(null);
+  const [relatedPosts, setRelatedPosts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [toc, setToc] = useState<TocItem[]>([]);
+  const [activeSection, setActiveSection] = useState<string>('');
 
-  // Mock data - will be replaced with Supabase query
-  const post = {
-    id: 1,
-    title: 'Çocuklara İngilizce Öğretmenin 5 Altın Kuralı',
-    slug: 'cocuklara-ingilizce-ogretmenin-5-altin-kurali',
-    image: 'https://images.pexels.com/photos/8535214/pexels-photo-8535214.jpeg?auto=compress&cs=tinysrgb&w=1200',
-    category: 'Eğitim',
-    author: {
-      name: 'Gonca Yoldaş',
-      avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=200',
-      bio: 'Kurucu & Baş Eğitmen - 15+ yıllık erken çocukluk eğitimi deneyimi',
-    },
-    date: '15 Ocak 2025',
-    readTime: '8 dakika',
-    content: `
-      <p>Erken yaşta dil öğrenimi, çocukların bilişsel gelişimi için kritik öneme sahiptir. Araştırmalar, 0-10 yaş arasındaki çocukların dil öğrenme kapasitelerinin yetişkinlere göre çok daha yüksek olduğunu göstermektedir.</p>
+  // Scroll spy for TOC
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setActiveSection(entry.target.id);
+          }
+        });
+      },
+      { rootMargin: '-100px 0px -60% 0px' }
+    );
 
-      <h2>1. Doğal ve Eğlenceli Bir Ortam Yaratın</h2>
-      <p>Çocuklar oyun oynayarak en iyi şekilde öğrenirler. İngilizce öğretimini günlük aktivitelere entegre edin:</p>
-      <ul>
-        <li>Şarkılar ve tekerlemeler kullanın</li>
-        <li>İngilizce çizgi filmler izleyin</li>
-        <li>Oyunlar oynayın</li>
-        <li>Hikaye kitapları okuyun</li>
-      </ul>
+    const headings = document.querySelectorAll('h2');
+    headings.forEach((h) => observer.observe(h));
 
-      <h2>2. Tutarlı Olun</h2>
-      <p>Dil öğrenimi düzenli pratik gerektirir. Her gün en az 15-20 dakika İngilizce maruz kalma sağlayın. Tutarlılık, başarının anahtarıdır.</p>
+    return () => observer.disconnect();
+  }, [post]);
 
-      <h2>3. Pozitif Pekiştirme Kullanın</h2>
-      <p>Çocuğunuzun her başarısını kutlayın. Hatalarını düzeltmek yerine, doğru kullanımları övün. Bu, özgüvenlerini artırır ve öğrenme motivasyonunu yüksek tutar.</p>
+  useEffect(() => {
+    if (slug) {
+      fetchPost(slug);
+    }
+  }, [slug]);
 
-      <h2>4. Görsel ve İşitsel Materyaller Kullanın</h2>
-      <p>Çocuklar görsel ve işitsel uyaranlarla daha iyi öğrenirler:</p>
-      <ul>
-        <li>Renkli flashcardlar</li>
-        <li>Eğitici videolar</li>
-        <li>İnteraktif uygulamalar</li>
-        <li>Müzik ve şarkılar</li>
-      </ul>
+  const fetchPost = async (slug: string) => {
+    setLoading(true);
+    setError(null);
 
-      <h2>5. Sabırlı Olun ve Beklentilerinizi Gerçekçi Tutun</h2>
-      <p>Her çocuk kendi hızında öğrenir. Karşılaştırma yapmaktan kaçının ve çocuğunuzun bireysel gelişim sürecine saygı gösterin.</p>
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const headers = {
+      'apikey': supabaseKey,
+      'Authorization': `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json'
+    };
 
-      <h2>Sonuç</h2>
-      <p>İngilizce öğretimi, çocuğunuzla kaliteli zaman geçirmenin ve onun gelecekteki başarısına yatırım yapmanın harika bir yoludur. Bu 5 altın kuralı uygulayarak, çocuğunuzun dil öğrenme yolculuğunu keyifli ve etkili hale getirebilirsiniz.</p>
-    `,
-  };
+    try {
+      const query = `select=id,title,slug,content,image_url,created_at,category_id,blog_categories(id,name,slug)&slug=eq.${slug}&is_published=eq.true`;
+      const response = await fetch(`${supabaseUrl}/rest/v1/blog_posts?${query}`, { headers });
+      
+      if (!response.ok) throw new Error('Yazı yüklenemedi');
+      
+      const data = await response.json();
+      if (!data || data.length === 0) throw new Error('Yazı bulunamadı');
+      
+      const postData = data[0];
 
-  const relatedPosts = [
-    {
-      id: 2,
-      title: 'Oyun Temelli Öğrenme Nedir?',
-      image: 'https://images.pexels.com/photos/3662667/pexels-photo-3662667.jpeg?auto=compress&cs=tinysrgb&w=400',
-      slug: 'oyun-temelli-ogrenme-nedir',
-    },
-    {
-      id: 3,
-      title: 'İki Dilli Çocuk Yetiştirmenin Avantajları',
-      image: 'https://images.pexels.com/photos/8363104/pexels-photo-8363104.jpeg?auto=compress&cs=tinysrgb&w=400',
-      slug: 'iki-dilli-cocuk-yetistirmenin-avantajlari',
-    },
-    {
-      id: 4,
-      title: '0-2 Yaş Arası Bebeklerde Dil Gelişimi',
-      image: 'https://images.pexels.com/photos/3662632/pexels-photo-3662632.jpeg?auto=compress&cs=tinysrgb&w=400',
-      slug: '0-2-yas-arasi-bebeklerde-dil-gelisimi',
-    },
-  ];
+      const { processedContent, toc } = processContent(postData.content);
+      setToc(toc);
 
-  // Animasyon varyantları
-  const fadeIn = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0 }
-  };
+      const formattedPost: BlogPostDetail = {
+        ...postData,
+        content: processedContent,
+        read_time: `${Math.ceil(postData.content.length / 1500)} dk okuma`,
+        category: postData.blog_categories || { id: '', name: 'Genel', slug: 'genel' }
+      };
 
-  const staggerChildren = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1
+      setPost(formattedPost);
+
+      if (postData.category_id) {
+        const relatedQuery = `select=id,title,slug,image_url,created_at&category_id=eq.${postData.category_id}&is_published=eq.true&id=neq.${postData.id}&limit=3`;
+        const relatedRes = await fetch(`${supabaseUrl}/rest/v1/blog_posts?${relatedQuery}`, { headers });
+        if (relatedRes.ok) {
+          setRelatedPosts(await relatedRes.json());
+        }
       }
+
+    } catch (err: any) {
+      console.error('Yazı yüklenemedi:', err);
+      setError('Yazı bulunamadı.');
+    } finally {
+      setLoading(false);
     }
   };
 
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(window.location.href);
+    toast.success('Link kopyalandı!');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-indigo-600" />
+      </div>
+    );
+  }
+
+  if (error || !post) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-4" />
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Bir Hata Oluştu</h1>
+        <p className="text-gray-600 mb-6">{error}</p>
+        <Button onClick={() => navigate('/blog')}>Blog Listesine Dön</Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[var(--bg)]">
-      {/* Hero Image */}
-      <motion.div 
-        initial="hidden"
-        animate="visible"
-        variants={fadeIn}
-        transition={{ duration: 0.6 }}
-        className="relative h-96 bg-gray-900"
-      >
-        <img
-          src={post.image}
-          alt={post.title}
-          className="w-full h-full object-cover opacity-60"
-        />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="container mx-auto px-4">
-            <div className="max-w-4xl mx-auto text-center text-white">
-              <div className="inline-block bg-[var(--color-primary)] px-3 py-1 rounded-full text-sm font-semibold mb-4">
-                {post.category}
-              </div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-4">{post.title}</h1>
-              <div className="flex items-center justify-center gap-6 text-sm">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  <span>{post.date}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  <span>{post.readTime}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </motion.div>
+    <div className="min-h-screen bg-white font-sans selection:bg-indigo-100 selection:text-indigo-900">
+      {/* Reading Progress Bar */}
+      <motion.div
+        className="fixed top-0 left-0 right-0 h-1.5 bg-indigo-600 origin-left z-50"
+        style={{ scaleX }}
+      />
 
-      <div className="container mx-auto px-4 py-12">
-        <div className="max-w-4xl mx-auto">
-          {/* Back Button */}
+      {/* Header Section (Matching Blog List Style) */}
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-20">
+        <div className="container mx-auto px-4 text-center">
           <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="max-w-4xl mx-auto"
           >
-            <Button variant="ghost" className="mb-6 text-[var(--fg)] hover:bg-[var(--hover-overlay)]" asChild>
-              <Link to="/blog">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Blog'a Dön
-              </Link>
-            </Button>
+            <div className="flex items-center justify-center gap-2 mb-6">
+              <span className="px-3 py-1 rounded-full bg-white/20 text-white border border-white/30 text-sm font-medium backdrop-blur-sm">
+                {post.category.name}
+              </span>
+            </div>
+            
+            <h1 className="text-3xl md:text-5xl font-bold text-white mb-6 leading-tight tracking-tight font-serif">
+              {post.title}
+            </h1>
+
+            <div className="flex items-center justify-center gap-4 text-blue-100 text-sm">
+              <span className="flex items-center gap-1">
+                <Calendar className="w-4 h-4" />
+                {format(new Date(post.created_at), 'd MMMM yyyy', { locale: tr })}
+              </span>
+              <span className="w-1 h-1 rounded-full bg-blue-300" />
+              <span className="flex items-center gap-1">
+                <Clock className="w-4 h-4" /> {post.read_time}
+              </span>
+            </div>
           </motion.div>
-
-          <div className="grid lg:grid-cols-4 gap-8">
-            {/* Main Content */}
-            <motion.article 
-              initial="hidden"
-              animate="visible"
-              variants={fadeIn}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="lg:col-span-3"
-            >
-              <Card className="border-[var(--border)] bg-[var(--bg-card)]">
-                <CardHeader>
-                  {/* Author Info */}
-                  <div className="flex items-center gap-4 mb-6">
-                    <img
-                      src={post.author.avatar}
-                      alt={post.author.name}
-                      className="w-16 h-16 rounded-full"
-                    />
-                    <div>
-                      <h3 className="font-semibold text-lg text-[var(--fg)]">{post.author.name}</h3>
-                      <p className="text-sm text-[var(--fg-muted)]">{post.author.bio}</p>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {/* Content */}
-                  <div 
-                    className="prose prose-lg max-w-none dark:prose-invert prose-headings:text-[var(--fg)] prose-p:text-[var(--fg-muted)] prose-li:text-[var(--fg-muted)] prose-strong:text-[var(--fg)]"
-                    dangerouslySetInnerHTML={{ __html: post.content }}
-                  />
-
-                  {/* Share Buttons */}
-                  <div className="mt-12 pt-8 border-t border-[var(--border)]">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-[var(--fg)]">
-                      <Share2 className="h-5 w-5" />
-                      Bu yazıyı paylaş
-                    </h3>
-                    <div className="flex gap-3">
-                      <Button variant="outline" size="sm" className="border-[var(--border)] text-[var(--fg)] hover:bg-[var(--hover-overlay)]">
-                        <Facebook className="h-4 w-4 mr-2" />
-                        Facebook
-                      </Button>
-                      <Button variant="outline" size="sm" className="border-[var(--border)] text-[var(--fg)] hover:bg-[var(--hover-overlay)]">
-                        <Twitter className="h-4 w-4 mr-2" />
-                        Twitter
-                      </Button>
-                      <Button variant="outline" size="sm" className="border-[var(--border)] text-[var(--fg)] hover:bg-[var(--hover-overlay)]">
-                        <Linkedin className="h-4 w-4 mr-2" />
-                        LinkedIn
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Related Posts */}
-              <motion.div 
-                initial="hidden"
-                animate="visible"
-                variants={fadeIn}
-                transition={{ duration: 0.5, delay: 0.4 }}
-                className="mt-12"
-              >
-                <h2 className="text-2xl font-bold mb-6 text-[var(--fg)]">İlgili Yazılar</h2>
-                <motion.div 
-                  initial="hidden"
-                  animate="visible"
-                  variants={staggerChildren}
-                  className="grid md:grid-cols-3 gap-6"
-                >
-                  {relatedPosts.map((relatedPost, index) => (
-                    <motion.div key={relatedPost.id} variants={fadeIn} transition={{ duration: 0.5 }}>
-                      <Card className="overflow-hidden hover:shadow-lg transition-shadow border-[var(--border)] bg-[var(--bg-card)]">
-                        <img
-                          src={relatedPost.image}
-                          alt={relatedPost.title}
-                          className="w-full h-40 object-cover"
-                        />
-                        <CardHeader>
-                          <CardTitle className="text-base text-[var(--fg)]">
-                            <Link to={`/blog/${relatedPost.slug}`} className="hover:text-[var(--color-primary)] transition-colors">
-                              {relatedPost.title}
-                            </Link>
-                          </CardTitle>
-                        </CardHeader>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </motion.div>
-              </motion.div>
-            </motion.article>
-
-            {/* Sidebar */}
-            <motion.aside 
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, delay: 0.3 }}
-              className="lg:col-span-1"
-            >
-              <Card className="sticky top-8 border-[var(--border)] bg-[var(--bg-card)]">
-                <CardHeader>
-                  <CardTitle className="text-[var(--fg)]">İçindekiler</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <nav className="space-y-2 text-sm">
-                    <a href="#" className="block text-[var(--color-primary)] hover:underline">1. Doğal ve Eğlenceli Bir Ortam</a>
-                    <a href="#" className="block text-[var(--fg-muted)] hover:text-[var(--color-primary)] hover:underline">2. Tutarlı Olun</a>
-                    <a href="#" className="block text-[var(--fg-muted)] hover:text-[var(--color-primary)] hover:underline">3. Pozitif Pekiştirme</a>
-                    <a href="#" className="block text-[var(--fg-muted)] hover:text-[var(--color-primary)] hover:underline">4. Görsel ve İşitsel Materyaller</a>
-                    <a href="#" className="block text-[var(--fg-muted)] hover:text-[var(--color-primary)] hover:underline">5. Sabırlı Olun</a>
-                    <a href="#" className="block text-[var(--fg-muted)] hover:text-[var(--color-primary)] hover:underline">Sonuç</a>
-                  </nav>
-                </CardContent>
-              </Card>
-            </motion.aside>
-          </div>
         </div>
       </div>
 
-      {/* CTA Section */}
-      <motion.section 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.6 }}
-        className="bg-[var(--color-primary)] text-white py-16"
-      >
-        <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl font-bold mb-4">
-            Çocuğunuzun İngilizce yolculuğuna başlamaya hazır mısınız?
-          </h2>
-          <p className="text-xl text-blue-100 mb-8">
-            Ücretsiz deneme dersimize katılın ve farkı görün
-          </p>
-          <Button size="lg" variant="secondary">
-            Ücretsiz Deneme Dersi Al
-          </Button>
+      <div className="container mx-auto px-4 py-12">
+        {/* Breadcrumb */}
+        <div className="max-w-7xl mx-auto mb-8 flex items-center gap-2 text-sm text-gray-500">
+          <Link to="/" className="hover:text-indigo-600 transition-colors">Anasayfa</Link>
+          <ChevronRight className="w-4 h-4" />
+          <Link to="/blog" className="hover:text-indigo-600 transition-colors">Blog</Link>
+          <ChevronRight className="w-4 h-4" />
+          <span className="text-gray-900 font-medium truncate max-w-[200px]">{post.title}</span>
         </div>
-      </motion.section>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 max-w-7xl mx-auto">
+          
+          {/* Left Sidebar (Share & TOC) */}
+          <aside className="hidden lg:block lg:col-span-3">
+            <div className="sticky top-24 space-y-8">
+              {/* Table of Contents */}
+              {toc.length > 0 && (
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-100">
+                  <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-indigo-600" />
+                    İçindekiler
+                  </h3>
+                  <nav className="space-y-1">
+                    {toc.map((item) => (
+                      <a
+                        key={item.id}
+                        href={`#${item.id}`}
+                        className={`block text-sm py-1.5 px-2 rounded-md transition-all duration-200 border-l-2 ${
+                          activeSection === item.id
+                            ? 'border-indigo-600 text-indigo-700 bg-indigo-50 font-medium'
+                            : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                        }`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' });
+                          setActiveSection(item.id);
+                        }}
+                      >
+                        {item.text}
+                      </a>
+                    ))}
+                  </nav>
+                </div>
+              )}
+
+              {/* Share Buttons */}
+              <div>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Paylaş</h3>
+                <div className="flex flex-col gap-2">
+                  <Button variant="outline" className="justify-start hover:bg-[#1877F2] hover:text-white hover:border-[#1877F2] transition-colors group">
+                    <Facebook className="w-4 h-4 mr-2 group-hover:text-white text-[#1877F2]" />
+                    Facebook
+                  </Button>
+                  <Button variant="outline" className="justify-start hover:bg-[#1DA1F2] hover:text-white hover:border-[#1DA1F2] transition-colors group">
+                    <Twitter className="w-4 h-4 mr-2 group-hover:text-white text-[#1DA1F2]" />
+                    Twitter
+                  </Button>
+                  <Button variant="outline" className="justify-start hover:bg-[#0A66C2] hover:text-white hover:border-[#0A66C2] transition-colors group">
+                    <Linkedin className="w-4 h-4 mr-2 group-hover:text-white text-[#0A66C2]" />
+                    LinkedIn
+                  </Button>
+                  <Button variant="outline" onClick={copyToClipboard} className="justify-start hover:bg-gray-800 hover:text-white hover:border-gray-800 transition-colors group">
+                    <LinkIcon className="w-4 h-4 mr-2 group-hover:text-white text-gray-600" />
+                    Linki Kopyala
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          {/* Main Content */}
+          <main className="lg:col-span-9">
+            {/* Featured Image */}
+            <div className="mb-10 rounded-2xl overflow-hidden shadow-lg border border-gray-100">
+              <img
+                src={post.image_url || 'https://images.pexels.com/photos/268533/pexels-photo-268533.jpeg'}
+                alt={post.title}
+                className="w-full h-auto object-cover max-h-[500px]"
+              />
+            </div>
+
+            <motion.article
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5 }}
+              className="prose prose-lg max-w-none 
+                prose-headings:font-serif prose-headings:font-bold prose-headings:text-gray-900 
+                prose-p:text-gray-600 prose-p:leading-relaxed
+                prose-a:text-indigo-600 prose-a:no-underline prose-a:border-b prose-a:border-indigo-200 hover:prose-a:border-indigo-600 hover:prose-a:bg-indigo-50 prose-a:transition-all
+                prose-img:rounded-2xl prose-img:shadow-lg prose-img:my-8
+                prose-blockquote:border-l-4 prose-blockquote:border-indigo-500 prose-blockquote:bg-gray-50 prose-blockquote:py-4 prose-blockquote:px-6 prose-blockquote:rounded-r-lg prose-blockquote:not-italic prose-blockquote:font-medium prose-blockquote:text-gray-800
+                prose-li:text-gray-600 prose-li:marker:text-indigo-500"
+              dangerouslySetInnerHTML={{ __html: post.content }}
+            />
+
+            {/* Mobile Share (Visible only on mobile) */}
+            <div className="lg:hidden mt-8 pt-8 border-t border-gray-100">
+              <h3 className="font-semibold mb-4">Bu yazıyı paylaş</h3>
+              <div className="flex gap-2">
+                <Button size="icon" variant="outline" className="rounded-full"><Facebook className="w-4 h-4" /></Button>
+                <Button size="icon" variant="outline" className="rounded-full"><Twitter className="w-4 h-4" /></Button>
+                <Button size="icon" variant="outline" className="rounded-full"><Linkedin className="w-4 h-4" /></Button>
+                <Button size="icon" variant="outline" className="rounded-full" onClick={copyToClipboard}><LinkIcon className="w-4 h-4" /></Button>
+              </div>
+            </div>
+          </main>
+
+        </div>
+
+        {/* Related Posts */}
+        {relatedPosts.length > 0 && (
+          <div className="mt-24 pt-12 border-t border-gray-100 max-w-7xl mx-auto">
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-2xl font-bold text-gray-900 font-serif">İlginizi Çekebilir</h2>
+              <Link to="/blog" className="text-indigo-600 font-medium hover:underline flex items-center">
+                Tüm Yazılar <ChevronRight className="w-4 h-4 ml-1" />
+              </Link>
+            </div>
+            
+            <div className="grid md:grid-cols-3 gap-8">
+              {relatedPosts.map((relatedPost) => (
+                <Link key={relatedPost.id} to={`/blog/${relatedPost.slug}`} className="group">
+                  <article className="bg-white rounded-xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 h-full flex flex-col">
+                    <div className="h-48 overflow-hidden relative">
+                      <img
+                        src={relatedPost.image_url || 'https://images.pexels.com/photos/268533/pexels-photo-268533.jpeg'}
+                        alt={relatedPost.title}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
+                    </div>
+                    <div className="p-6 flex-1 flex flex-col">
+                      <div className="text-xs text-gray-500 mb-2">
+                        {format(new Date(relatedPost.created_at), 'd MMMM yyyy', { locale: tr })}
+                      </div>
+                      <h3 className="font-bold text-lg text-gray-900 mb-2 group-hover:text-indigo-600 transition-colors line-clamp-2">
+                        {relatedPost.title}
+                      </h3>
+                      <div className="mt-auto pt-4 flex items-center text-indigo-600 text-sm font-medium">
+                        Devamını Oku <ChevronRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
+                      </div>
+                    </div>
+                  </article>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

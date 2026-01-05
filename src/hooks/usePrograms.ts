@@ -5,6 +5,7 @@ export interface Program {
   id: string;
   slug: string;
   title: string;
+  title_tr?: string | null; // Added title_tr
   short_title: string;
   title_en?: string | null;
   age_group: '0-2' | '2-5' | '5-10';

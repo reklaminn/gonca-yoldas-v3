@@ -3,7 +3,13 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+// DEBUG: Ortam değişkenlerini kontrol et
+console.log('🔌 [Supabase] Client başlatılıyor...');
+console.log('🔌 [Supabase] URL:', supabaseUrl ? `${supabaseUrl.substring(0, 20)}...` : 'TANIMSIZ');
+console.log('🔌 [Supabase] Key:', supabaseAnonKey ? 'Mevcut (Gizli)' : 'TANIMSIZ');
+
 if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('❌ [Supabase] Kritik Hata: Ortam değişkenleri eksik!');
   throw new Error('Missing Supabase environment variables. Please check your .env file.');
 }
 
@@ -11,26 +17,37 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true, // Session URL'den algılansın
+    detectSessionInUrl: true,
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     storageKey: 'sb-jlwsapdvizzriomadhxj-auth-token',
     flowType: 'pkce',
   },
   db: {
     schema: 'public',
+  },
+  // Global fetch hatası yakalama (opsiyonel debug için)
+  global: {
+    headers: { 'x-application-name': 'gonca-yoldas-blog' },
   }
 });
 
-// Debug: Session durumunu kontrol et
-if (typeof window !== 'undefined') {
-  const storedSession = localStorage.getItem('sb-jlwsapdvizzriomadhxj-auth-token');
-  console.log('🔑 [SupabaseClient] Stored session exists:', !!storedSession);
-  if (storedSession) {
-    try {
-      const parsed = JSON.parse(storedSession);
-      console.log('🔑 [SupabaseClient] Session expires at:', parsed?.expires_at ? new Date(parsed.expires_at * 1000).toLocaleString() : 'N/A');
-    } catch (e) {
-      console.warn('🔑 [SupabaseClient] Could not parse stored session');
+// Bağlantı testi fonksiyonu
+export const checkConnection = async () => {
+  console.log('🔌 [Supabase] Bağlantı testi başlatılıyor...');
+  const start = Date.now();
+  try {
+    const { data, error } = await supabase.from('blog_posts').select('count', { count: 'exact', head: true });
+    const duration = Date.now() - start;
+    
+    if (error) {
+      console.error('❌ [Supabase] Bağlantı testi başarısız:', error.message, error.details);
+      return false;
     }
+    
+    console.log(`✅ [Supabase] Bağlantı başarılı! (${duration}ms)`);
+    return true;
+  } catch (err) {
+    console.error('❌ [Supabase] Bağlantı testi sırasında beklenmeyen hata:', err);
+    return false;
   }
-}
+};

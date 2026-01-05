@@ -42,7 +42,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ImagePicker } from '@/components/admin/ImagePicker';
-import { JsonListEditor } from '@/components/admin/JsonListEditor';
+import { ComplexJsonEditor } from '@/components/admin/ComplexJsonEditor';
+import { RichTextEditor } from '@/components/admin/RichTextEditor';
 
 const PAGE_TITLES: Record<string, string> = {
   'global': 'Genel Ayarlar',
@@ -75,10 +76,18 @@ const SortableSectionCard: React.FC<SectionCardProps> = ({
   saved,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [localValue, setLocalValue] = useState(item.content_value || '');
+  
+  // Helper to safely get string value
+  const getSafeValue = (val: any) => {
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'object') return JSON.stringify(val);
+    return String(val);
+  };
+
+  const [localValue, setLocalValue] = useState(getSafeValue(item.content_value));
 
   useEffect(() => {
-    setLocalValue(item.content_value || '');
+    setLocalValue(getSafeValue(item.content_value));
   }, [item.content_value]);
 
   const {
@@ -101,7 +110,7 @@ const SortableSectionCard: React.FC<SectionCardProps> = ({
   };
 
   const handleCancel = () => {
-    setLocalValue(item.content_value || '');
+    setLocalValue(getSafeValue(item.content_value));
     setIsEditing(false);
   };
 
@@ -126,6 +135,22 @@ const SortableSectionCard: React.FC<SectionCardProps> = ({
     if (item.content_type === 'json') {
       try {
         const parsed = JSON.parse(localValue);
+        
+        // Handle complex objects preview
+        if (!Array.isArray(parsed) && typeof parsed === 'object') {
+           return (
+            <div className="space-y-1">
+              {parsed.title && <p className="font-medium text-sm">{parsed.title}</p>}
+              {parsed.items && Array.isArray(parsed.items) && (
+                <p className="text-xs text-gray-500">{parsed.items.length} liste öğesi</p>
+              )}
+              {parsed.features && Array.isArray(parsed.features) && (
+                <p className="text-xs text-gray-500">{parsed.features.length} özellik</p>
+              )}
+            </div>
+           );
+        }
+
         const count = Array.isArray(parsed) ? parsed.length : 0;
         return (
           <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
@@ -140,6 +165,14 @@ const SortableSectionCard: React.FC<SectionCardProps> = ({
       } catch (e) {
         return <p className="text-sm text-red-500">Geçersiz JSON verisi</p>;
       }
+    }
+
+    if (item.content_type === 'rich_text') {
+      return (
+        <div className="text-sm text-gray-600 dark:text-gray-300 line-clamp-3">
+           <div dangerouslySetInnerHTML={{ __html: localValue }} />
+        </div>
+      );
     }
 
     return (
@@ -216,15 +249,12 @@ const SortableSectionCard: React.FC<SectionCardProps> = ({
                   placeholder="İçerik giriniz..."
                 />
               ) : item.content_type === 'rich_text' ? (
-                <Textarea
+                <RichTextEditor
                   value={localValue}
-                  onChange={(e) => setLocalValue(e.target.value)}
-                  rows={6}
-                  className="font-mono text-sm"
-                  placeholder="HTML içerik giriniz..."
+                  onChange={setLocalValue}
                 />
               ) : item.content_type === 'json' ? (
-                <JsonListEditor 
+                <ComplexJsonEditor 
                   value={localValue} 
                   onChange={setLocalValue} 
                   sectionKey={item.section_key}

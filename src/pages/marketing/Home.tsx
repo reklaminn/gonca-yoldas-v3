@@ -280,21 +280,17 @@ const Home: React.FC = () => {
                           <div className="text-sm font-semibold mb-2" style={{ color: 'var(--color-accent)' }}>
                             {program.age_range}
                           </div>
-                          <CardTitle style={{ color: 'var(--fg)' }} className="line-clamp-1">{program.title}</CardTitle>
+                          <CardTitle 
+                            style={{ color: 'var(--fg)' }} 
+                            className="text-lg leading-tight mb-1"
+                          >
+                            {program.title}
+                          </CardTitle>
                           <CardDescription style={{ color: 'var(--fg-muted)' }} className="line-clamp-2">
                             {program.description}
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="mt-auto">
-                          <div className="space-y-2 mb-4 text-sm" style={{ color: 'var(--fg-muted)' }}>
-                            <div className="flex items-center gap-2">
-                              <Calendar className="h-4 w-4 text-[var(--color-primary)]" />
-                              <span>{program.schedule}</span>
-                            </div>
-                            <div className="font-bold text-[var(--fg)] text-lg">
-                              ₺{program.price.toLocaleString('tr-TR')}
-                            </div>
-                          </div>
                           <Button
                             onClick={() => navigate(`/programs/${program.slug}`)}
                             className="btn-primary w-full"
@@ -392,10 +388,10 @@ const Home: React.FC = () => {
                   className="text-center mb-16"
                 >
                   <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[var(--fg)] mb-4">
-                    Velilerimiz Ne Diyor?
+                   {content.testimonials_title}
                   </h2>
                   <p className="text-lg text-[var(--fg-muted)] max-w-2xl mx-auto">
-                    Çocuklar İçin Online İngilizce programımıza katılan velilerimizin deneyimleri
+										{content.testimonials_description}
                   </p>
                 </motion.div>
 
@@ -486,7 +482,7 @@ const Home: React.FC = () => {
                   onClick={handleSignUpClick}
                   className="bg-white text-[var(--color-primary)] hover:bg-gray-100 font-poppins font-semibold rounded-lg text-lg px-8 py-6 transition-all duration-200 hover:scale-105"
                 >
-                  Ücretsiz Kayıt Ol
+                  Email Bülten Kayıt Ol
                 </Button>
               </motion.div>
             </div>

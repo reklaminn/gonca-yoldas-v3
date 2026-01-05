@@ -1,17 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { MapPin, Phone, Mail, Clock, Send, MessageCircle, Loader2, CheckCircle2 } from 'lucide-react';
+import { MapPin, Phone, Mail, Send, MessageCircle, Loader2, CheckCircle2 } from 'lucide-react';
 import { usePageContent } from '@/hooks/usePageContent';
-import { supabase } from '@/lib/supabaseClient'; // Hatalı yol düzeltildi
+import { getGeneralSettings, GeneralSettings } from '@/services/generalSettings';
+import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 
 const Contact: React.FC = () => {
-  const { content, loading } = usePageContent('contact');
+  // Hero başlığı ve açıklaması için page content kullanmaya devam ediyoruz
+  const { content, loading: contentLoading } = usePageContent('contact');
+  
+  // İletişim bilgileri için General Settings kullanıyoruz
+  const [settings, setSettings] = useState<GeneralSettings | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [userIp, setUserIp] = useState<string>('');
@@ -23,6 +30,16 @@ const Contact: React.FC = () => {
     subject: '',
     message: '',
   });
+
+  // Ayarları çek
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const data = await getGeneralSettings();
+      setSettings(data);
+      setSettingsLoading(false);
+    };
+    fetchSettings();
+  }, []);
 
   // IP adresini al
   useEffect(() => {
@@ -72,14 +89,26 @@ const Contact: React.FC = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // Dinamik iletişim bilgileri (Çalışma saatleri kaldırıldı)
   const contactInfo = [
-    { icon: MapPin, title: 'Adres', content: content.address || 'Nispetiye Cad. No:12/A\nLevent, İstanbul' },
-    { icon: Phone, title: 'Telefon', content: content.phone || '+90 (212) 123 45 67' },
-    { icon: Mail, title: 'E-posta', content: content.email || 'info@goncayoldas.com' },
-    { icon: Clock, title: 'Çalışma Saatleri', content: content.hours || 'Pzt - Cum: 09:00 - 18:00' },
+    { 
+      icon: MapPin, 
+      title: 'Adres', 
+      content: settings?.address || 'Adres bilgisi yükleniyor...' 
+    },
+    { 
+      icon: Phone, 
+      title: 'Telefon', 
+      content: settings?.phone || 'Telefon bilgisi yükleniyor...' 
+    },
+    { 
+      icon: Mail, 
+      title: 'E-posta', 
+      content: settings?.contact_email || 'E-posta bilgisi yükleniyor...' 
+    },
   ];
 
-  if (loading) {
+  if (contentLoading || settingsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
         <Loader2 className="h-12 w-12 animate-spin text-[var(--color-primary)]" />

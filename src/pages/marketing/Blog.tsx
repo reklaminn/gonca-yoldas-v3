@@ -1,134 +1,148 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Calendar, Clock, Tag, Search, TrendingUp } from 'lucide-react';
+import { Calendar, Clock, Tag, Search, TrendingUp, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { format } from 'date-fns';
+import { tr } from 'date-fns/locale';
+
+// Types
+interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  count?: number;
+}
+
+interface BlogPost {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  image_url: string; // Changed from featured_image
+  created_at: string; // Using created_at as published_at might not exist in schema based on migration
+  read_time: string;
+  category: {
+    name: string;
+    slug: string;
+  };
+  author: {
+    full_name: string;
+    avatar_url: string;
+  };
+  views: number;
+}
 
 const Blog: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  
+  // Data States
+  const [posts, setPosts] = useState<BlogPost[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const categories = [
-    { id: 'all', label: 'Tümü', count: 24 },
-    { id: 'education', label: 'Eğitim', count: 12 },
-    { id: 'development', label: 'Gelişim', count: 8 },
-    { id: 'parenting', label: 'Ebeveynlik', count: 6 },
-    { id: 'tips', label: 'İpuçları', count: 5 },
-  ];
+  useEffect(() => {
+    fetchBlogData();
+  }, []);
 
-  const featuredPost = {
-    id: 1,
-    title: 'Çocuklara İngilizce Öğretmenin 5 Altın Kuralı',
-    excerpt: 'Erken yaşta dil öğreniminin önemi ve etkili yöntemler hakkında kapsamlı rehber. Bilimsel araştırmalarla desteklenen pratik öneriler.',
-    image: 'https://images.pexels.com/photos/8535214/pexels-photo-8535214.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-    category: 'Eğitim',
-    author: {
-      name: 'Gonca Yoldaş',
-      avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=100',
-    },
-    date: '15 Ocak 2025',
-    readTime: '8 dakika',
-    slug: 'cocuklara-ingilizce-ogretmenin-5-altin-kurali',
+  const fetchBlogData = async () => {
+    setLoading(true);
+    setError(null);
+    
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const headers = {
+      'apikey': supabaseKey,
+      'Authorization': `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json'
+    };
+
+    try {
+      console.log('📡 Blog verileri çekiliyor (Direct REST)...');
+
+      // 1. Kategorileri Çek
+      const catResponse = await fetch(`${supabaseUrl}/rest/v1/blog_categories?select=*`, { headers });
+      if (!catResponse.ok) throw new Error('Kategoriler yüklenemedi');
+      const categoriesData = await catResponse.json();
+
+      // 2. Yazıları Çek
+      // DÜZELTME: featured_image -> image_url
+      // DÜZELTME: published_at -> created_at (Migration dosyasında published_at yoktu, created_at vardı)
+      const query = `select=id,title,slug,excerpt,image_url,created_at,views,category_id,blog_categories(name,slug)&is_published=eq.true&order=created_at.desc`;
+      
+      const postsResponse = await fetch(`${supabaseUrl}/rest/v1/blog_posts?${query}`, { headers });
+      
+      if (!postsResponse.ok) {
+        const errText = await postsResponse.text();
+        console.error('Blog fetch error:', errText);
+        // Hata detayını kullanıcıya göstermek için parse etmeye çalışalım
+        try {
+            const errJson = JSON.parse(errText);
+            throw new Error(`Hata: ${errJson.message || postsResponse.status}`);
+        } catch {
+            throw new Error(`Yazılar yüklenemedi: ${postsResponse.status}`);
+        }
+      }
+      
+      const postsData = await postsResponse.json();
+      console.log(`✅ ${postsData.length} yazı çekildi.`);
+
+      // Veriyi işle
+      const formattedPosts: BlogPost[] = postsData.map((post: any) => ({
+        id: post.id,
+        title: post.title,
+        slug: post.slug,
+        excerpt: post.excerpt || '',
+        image_url: post.image_url || 'https://images.pexels.com/photos/268533/pexels-photo-268533.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
+        created_at: post.created_at,
+        read_time: '5 dk',
+        // İlişkisel veri kontrolü
+        category: post.blog_categories ? {
+          name: post.blog_categories.name,
+          slug: post.blog_categories.slug
+        } : { name: 'Genel', slug: 'genel' },
+        author: { full_name: 'Gonca Yoldaş', avatar_url: '' }, 
+        views: post.views || 0
+      }));
+
+      // Kategori sayılarını hesapla
+      const categoriesWithCounts = categoriesData.map((cat: any) => ({
+        ...cat,
+        count: formattedPosts.filter(p => p.category.slug === cat.slug).length
+      }));
+
+      setCategories(categoriesWithCounts);
+      setPosts(formattedPosts);
+
+    } catch (err: any) {
+      console.error('Blog verileri çekilemedi:', err);
+      setError(err.message || 'Blog yazıları yüklenirken bir hata oluştu.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const posts = [
-    {
-      id: 2,
-      title: 'Oyun Temelli Öğrenme Nedir?',
-      excerpt: 'Çocukların oyun oynayarak nasıl daha iyi öğrendiğini keşfedin...',
-      image: 'https://images.pexels.com/photos/3662667/pexels-photo-3662667.jpeg?auto=compress&cs=tinysrgb&w=600',
-      category: 'Eğitim',
-      author: {
-        name: 'Gonca Yoldaş',
-        avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=100',
-      },
-      date: '10 Ocak 2025',
-      readTime: '5 dakika',
-      slug: 'oyun-temelli-ogrenme-nedir',
-    },
-    {
-      id: 3,
-      title: 'İki Dilli Çocuk Yetiştirmenin Avantajları',
-      excerpt: 'Bilimsel araştırmalar iki dilli çocukların avantajlarını ortaya koyuyor...',
-      image: 'https://images.pexels.com/photos/8363104/pexels-photo-8363104.jpeg?auto=compress&cs=tinysrgb&w=600',
-      category: 'Gelişim',
-      author: {
-        name: 'Gonca Yoldaş',
-        avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=100',
-      },
-      date: '5 Ocak 2025',
-      readTime: '6 dakika',
-      slug: 'iki-dilli-cocuk-yetistirmenin-avantajlari',
-    },
-    {
-      id: 4,
-      title: '0-2 Yaş Arası Bebeklerde Dil Gelişimi',
-      excerpt: 'Bebeklik döneminde dil gelişimini desteklemenin yolları...',
-      image: 'https://images.pexels.com/photos/3662632/pexels-photo-3662632.jpeg?auto=compress&cs=tinysrgb&w=600',
-      category: 'Gelişim',
-      author: {
-        name: 'Gonca Yoldaş',
-        avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=100',
-      },
-      date: '28 Aralık 2024',
-      readTime: '7 dakika',
-      slug: '0-2-yas-arasi-bebeklerde-dil-gelisimi',
-    },
-    {
-      id: 5,
-      title: 'Evde İngilizce Pratiği İçin 10 Aktivite',
-      excerpt: 'Çocuğunuzla evde yapabileceğiniz eğlenceli İngilizce aktiviteleri...',
-      image: 'https://images.pexels.com/photos/8535227/pexels-photo-8535227.jpeg?auto=compress&cs=tinysrgb&w=600',
-      category: 'İpuçları',
-      author: {
-        name: 'Gonca Yoldaş',
-        avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=100',
-      },
-      date: '20 Aralık 2024',
-      readTime: '4 dakika',
-      slug: 'evde-ingilizce-pratigi-icin-10-aktivite',
-    },
-    {
-      id: 6,
-      title: 'Çocuklarda Motivasyonu Artırmanın Yolları',
-      excerpt: 'Öğrenme sürecinde motivasyonu yüksek tutmak için pratik öneriler...',
-      image: 'https://images.pexels.com/photos/8535209/pexels-photo-8535209.jpeg?auto=compress&cs=tinysrgb&w=600',
-      category: 'Ebeveynlik',
-      author: {
-        name: 'Gonca Yoldaş',
-        avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=100',
-      },
-      date: '15 Aralık 2024',
-      readTime: '5 dakika',
-      slug: 'cocuklarda-motivasyonu-artirmanin-yollari',
-    },
-  ];
+  // Featured Post (En son yayınlanan)
+  const featuredPost = posts.length > 0 ? posts[0] : null;
+  
+  // Diğer yazılar (Featured hariç)
+  const otherPosts = posts.length > 0 ? posts.slice(1) : [];
 
-  const popularPosts = [
-    {
-      id: 1,
-      title: 'Çocuklara İngilizce Öğretmenin 5 Altın Kuralı',
-      views: 1250,
-    },
-    {
-      id: 2,
-      title: 'İki Dilli Çocuk Yetiştirmenin Avantajları',
-      views: 980,
-    },
-    {
-      id: 3,
-      title: 'Oyun Temelli Öğrenme Nedir?',
-      views: 875,
-    },
-  ];
+  // Popüler Yazılar (Görüntülenmeye göre)
+  const popularPosts = [...posts].sort((a, b) => b.views - a.views).slice(0, 3);
 
-  const filteredPosts = posts.filter((post) => {
+  // Filtreleme
+  const filteredPosts = otherPosts.filter((post) => {
     const matchesSearch = post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                         post.excerpt.toLowerCase().includes(searchQuery.toLowerCase());
+    
     const matchesCategory = selectedCategory === 'all' || 
-                           post.category.toLowerCase() === categories.find(c => c.id === selectedCategory)?.label.toLowerCase();
+                           post.category.slug === selectedCategory;
+                           
     return matchesSearch && matchesCategory;
   });
 
@@ -137,6 +151,17 @@ const Blog: React.FC = () => {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0 }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-[var(--fg-muted)]">Blog yazıları yükleniyor...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--bg)]">
@@ -188,18 +213,31 @@ const Blog: React.FC = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
+                <button
+                  onClick={() => setSelectedCategory('all')}
+                  className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
+                    selectedCategory === 'all'
+                      ? 'bg-[var(--color-primary)] text-white'
+                      : 'hover:bg-[var(--hover-overlay)] text-[var(--fg)]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span>Tümü</span>
+                    <span className="text-sm opacity-75">({posts.length})</span>
+                  </div>
+                </button>
                 {categories.map((category) => (
                   <button
                     key={category.id}
-                    onClick={() => setSelectedCategory(category.id)}
+                    onClick={() => setSelectedCategory(category.slug)}
                     className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
-                      selectedCategory === category.id
+                      selectedCategory === category.slug
                         ? 'bg-[var(--color-primary)] text-white'
                         : 'hover:bg-[var(--hover-overlay)] text-[var(--fg)]'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span>{category.label}</span>
+                      <span>{category.name}</span>
                       <span className="text-sm opacity-75">({category.count})</span>
                     </div>
                   </button>
@@ -223,8 +261,8 @@ const Blog: React.FC = () => {
                     </div>
                     <div>
                       <Link 
-                        to={`/blog/${post.id}`}
-                        className="text-sm font-medium hover:text-[var(--color-primary)] transition-colors text-[var(--fg)]"
+                        to={`/blog/${post.slug}`}
+                        className="text-sm font-medium hover:text-[var(--color-primary)] transition-colors text-[var(--fg)] line-clamp-2"
                       >
                         {post.title}
                       </Link>
@@ -238,58 +276,77 @@ const Blog: React.FC = () => {
 
           {/* Main Content */}
           <div className="lg:col-span-3">
-            {/* Featured Post */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.3 }}
-            >
-              <Card className="mb-8 overflow-hidden hover:shadow-xl transition-shadow border-[var(--border)] bg-[var(--bg-card)]">
-                <div className="grid md:grid-cols-2 gap-0">
-                  <img
-                    src={featuredPost.image}
-                    alt={featuredPost.title}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="p-8 flex flex-col justify-center">
-                    <div className="inline-block bg-[var(--bg-elev)] text-[var(--color-primary)] px-3 py-1 rounded-full text-sm font-semibold mb-4 w-fit">
-                      Öne Çıkan
-                    </div>
-                    <h2 className="text-3xl font-bold mb-4 text-[var(--fg)]">
-                      <Link to={`/blog/${featuredPost.slug}`} className="hover:text-[var(--color-primary)] transition-colors">
-                        {featuredPost.title}
-                      </Link>
-                    </h2>
-                    <p className="text-[var(--fg-muted)] mb-6">{featuredPost.excerpt}</p>
-                    
-                    <div className="flex items-center gap-4 text-sm text-[var(--fg-muted)] mb-6">
-                      <div className="flex items-center gap-2">
-                        <img
-                          src={featuredPost.author.avatar}
-                          alt={featuredPost.author.name}
-                          className="w-8 h-8 rounded-full"
-                        />
-                        <span>{featuredPost.author.name}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Calendar className="h-4 w-4" />
-                        <span>{featuredPost.date}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-4 w-4" />
-                        <span>{featuredPost.readTime}</span>
-                      </div>
-                    </div>
-
-                    <Button asChild>
-                      <Link to={`/blog/${featuredPost.slug}`}>
-                        Devamını Oku
-                      </Link>
-                    </Button>
-                  </div>
+            {error && (
+              <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5" />
+                  {error}
                 </div>
-              </Card>
-            </motion.div>
+                <Button variant="outline" size="sm" onClick={fetchBlogData} className="bg-white text-red-600 border-red-200 hover:bg-red-50">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Tekrar Dene
+                </Button>
+              </div>
+            )}
+
+            {/* Featured Post */}
+            {featuredPost && !searchQuery && selectedCategory === 'all' && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+              >
+                <Card className="mb-8 overflow-hidden hover:shadow-xl transition-shadow border-[var(--border)] bg-[var(--bg-card)]">
+                  <div className="grid md:grid-cols-2 gap-0">
+                    <div className="h-64 md:h-auto relative">
+                      <img
+                        src={featuredPost.image_url}
+                        alt={featuredPost.title}
+                        className="w-full h-full object-cover absolute inset-0"
+                      />
+                    </div>
+                    <div className="p-8 flex flex-col justify-center">
+                      <div className="inline-block bg-[var(--bg-elev)] text-[var(--color-primary)] px-3 py-1 rounded-full text-sm font-semibold mb-4 w-fit">
+                        Öne Çıkan
+                      </div>
+                      <h2 className="text-3xl font-bold mb-4 text-[var(--fg)]">
+                        <Link to={`/blog/${featuredPost.slug}`} className="hover:text-[var(--color-primary)] transition-colors">
+                          {featuredPost.title}
+                        </Link>
+                      </h2>
+                      <p className="text-[var(--fg-muted)] mb-6 line-clamp-3">{featuredPost.excerpt}</p>
+                      
+                      <div className="flex items-center gap-4 text-sm text-[var(--fg-muted)] mb-6">
+                        <div className="flex items-center gap-2">
+                          {featuredPost.author.avatar_url ? (
+                            <img
+                              src={featuredPost.author.avatar_url}
+                              alt={featuredPost.author.full_name}
+                              className="w-8 h-8 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+                              <span className="text-xs font-bold">{featuredPost.author.full_name?.charAt(0)}</span>
+                            </div>
+                          )}
+                          <span>{featuredPost.author.full_name}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />
+                          <span>{format(new Date(featuredPost.created_at), 'd MMMM yyyy', { locale: tr })}</span>
+                        </div>
+                      </div>
+
+                      <Button asChild>
+                        <Link to={`/blog/${featuredPost.slug}`}>
+                          Devamını Oku
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
 
             {/* Posts Grid */}
             <motion.div
@@ -298,7 +355,9 @@ const Blog: React.FC = () => {
               transition={{ duration: 0.5, delay: 0.4 }}
               className="mb-6"
             >
-              <h2 className="text-2xl font-bold text-[var(--fg)] mb-2">Tüm Yazılar</h2>
+              <h2 className="text-2xl font-bold text-[var(--fg)] mb-2">
+                {searchQuery ? 'Arama Sonuçları' : 'Son Yazılar'}
+              </h2>
               <p className="text-[var(--fg-muted)]">{filteredPosts.length} yazı bulundu</p>
             </motion.div>
 
@@ -310,35 +369,37 @@ const Blog: React.FC = () => {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: 0.5 + (index * 0.1) }}
                 >
-                  <Card className="overflow-hidden hover:shadow-lg transition-shadow border-[var(--border)] bg-[var(--bg-card)]">
-                    <img
-                      src={post.image}
-                      alt={post.title}
-                      className="w-full h-48 object-cover"
-                    />
+                  <Card className="overflow-hidden hover:shadow-lg transition-shadow border-[var(--border)] bg-[var(--bg-card)] h-full flex flex-col">
+                    <div className="h-48 overflow-hidden relative">
+                      <img
+                        src={post.image_url}
+                        alt={post.title}
+                        className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                      />
+                    </div>
                     <CardHeader>
                       <div className="text-sm text-[var(--color-primary)] font-semibold mb-2">
-                        {post.category}
+                        {post.category.name}
                       </div>
-                      <CardTitle className="text-xl text-[var(--fg)]">
+                      <CardTitle className="text-xl text-[var(--fg)] line-clamp-2">
                         <Link to={`/blog/${post.slug}`} className="hover:text-[var(--color-primary)] transition-colors">
                           {post.title}
                         </Link>
                       </CardTitle>
-                      <CardDescription className="text-[var(--fg-muted)]">{post.excerpt}</CardDescription>
+                      <CardDescription className="text-[var(--fg-muted)] line-clamp-2">{post.excerpt}</CardDescription>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="mt-auto">
                       <div className="flex items-center gap-4 text-sm text-[var(--fg-muted)] mb-4">
                         <div className="flex items-center gap-1">
                           <Calendar className="h-4 w-4" />
-                          <span>{post.date}</span>
+                          <span>{format(new Date(post.created_at), 'd MMM yyyy', { locale: tr })}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <Clock className="h-4 w-4" />
-                          <span>{post.readTime}</span>
+                          <span>{post.read_time}</span>
                         </div>
                       </div>
-                      <Button variant="ghost" className="p-0 text-[var(--color-primary)]" asChild>
+                      <Button variant="ghost" className="p-0 text-[var(--color-primary)] hover:bg-transparent hover:text-[var(--color-primary)]/80" asChild>
                         <Link to={`/blog/${post.slug}`}>
                           Devamını Oku →
                         </Link>
@@ -349,32 +410,23 @@ const Blog: React.FC = () => {
               ))}
             </div>
 
-            {filteredPosts.length === 0 && (
+            {filteredPosts.length === 0 && !loading && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.5, delay: 0.5 }}
-                className="text-center py-12"
+                className="text-center py-12 bg-[var(--bg-card)] rounded-lg border border-[var(--border)]"
               >
                 <p className="text-[var(--fg-muted)] text-lg">
-                  Aradığınız kriterlere uygun yazı bulunamadı.
+                  {searchQuery 
+                    ? `"${searchQuery}" araması için sonuç bulunamadı.` 
+                    : 'Bu kategoride henüz yazı bulunmuyor.'}
                 </p>
-              </motion.div>
-            )}
-
-            {/* Pagination */}
-            {filteredPosts.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.7 }}
-                className="flex justify-center gap-2 mt-12"
-              >
-                <Button variant="outline" disabled className="border-[var(--border)] text-[var(--fg)]">Önceki</Button>
-                <Button variant="default">1</Button>
-                <Button variant="outline" className="border-[var(--border)] text-[var(--fg)]">2</Button>
-                <Button variant="outline" className="border-[var(--border)] text-[var(--fg)]">3</Button>
-                <Button variant="outline" className="border-[var(--border)] text-[var(--fg)]">Sonraki</Button>
+                {searchQuery && (
+                  <Button variant="link" onClick={() => setSearchQuery('')} className="mt-2">
+                    Aramayı Temizle
+                  </Button>
+                )}
               </motion.div>
             )}
           </div>

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Clock, Users, Award, ChevronRight, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Clock, Award, ChevronRight, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { usePrograms } from '@/hooks/usePrograms';
 import { useAgeGroups } from '@/hooks/useAgeGroups';
 
@@ -211,10 +211,7 @@ const Programs: React.FC = () => {
                       <Clock className="h-4 w-4 text-[var(--color-primary)]" />
                       <span className="text-sm">{program.duration}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-[var(--fg-muted)]">
-                      <Users className="h-4 w-4 text-[var(--color-primary)]" />
-                      <span className="text-sm">{program.enrolled_students} öğrenci</span>
-                    </div>
+                    {/* Student count removed here */}
                     <div className="flex items-center gap-2 text-[var(--fg-muted)]">
                       <Award className="h-4 w-4 text-[var(--color-primary)]" />
                       <span className="text-sm">{program.lessons_per_week}x hafta</span>
@@ -226,9 +223,6 @@ const Programs: React.FC = () => {
                     <div>
                       <span className="text-3xl font-bold text-[var(--fg)]">
                         ₺{program.price.toLocaleString()}
-                      </span>
-                      <span className="text-[var(--fg-muted)] text-sm ml-2">
-                        / program
                       </span>
                     </div>
                     <Button
@@ -253,17 +247,17 @@ const Programs: React.FC = () => {
           transition={{ duration: 0.6 }}
           className="mt-20 bg-gradient-primary rounded-2xl p-12 text-center text-white"
         >
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+          <h2 className="text-3xl md:text-4xl font-bold mb-4 text-white">
             Hangi Program Size Uygun?
           </h2>
-          <p className="text-lg mb-8 opacity-90">
+          <p className="text-lg mb-8 opacity-90 text-white">
             Ücretsiz danışmanlık için bizimle iletişime geçin
           </p>
           <Button
             onClick={() => navigate('/contact')}
             className="bg-white text-[var(--color-primary)] hover:bg-gray-100 font-poppins font-semibold rounded-lg text-lg px-8 py-6 transition-all duration-200 hover:scale-105"
           >
-            İletişime Geç
+           Email Bülten Kayıt Ol
           </Button>
         </motion.div>
       </div>

@@ -29,7 +29,9 @@ import {
   Tag,
   FileText,
   Link as LinkIcon,
-  DollarSign
+  DollarSign,
+  Phone,
+  MapPin
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -59,6 +61,8 @@ const SettingsPage: React.FC = () => {
   const [siteDescription, setSiteDescription] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [supportEmail, setSupportEmail] = useState('');
+  const [phone, setPhone] = useState(''); // Yeni
+  const [address, setAddress] = useState(''); // Yeni
   const [timezone, setTimezone] = useState('');
   const [language, setLanguage] = useState('');
   const [maintenanceMode, setMaintenanceMode] = useState(false);
@@ -137,6 +141,8 @@ const SettingsPage: React.FC = () => {
         setSiteDescription(settings.site_description);
         setContactEmail(settings.contact_email);
         setSupportEmail(settings.support_email);
+        setPhone(settings.phone || ''); // Yeni
+        setAddress(settings.address || ''); // Yeni
         setTimezone(settings.timezone);
         setLanguage(settings.language);
         setMaintenanceMode(settings.maintenance_mode_active);
@@ -169,6 +175,8 @@ const SettingsPage: React.FC = () => {
         site_description: siteDescription,
         contact_email: contactEmail,
         support_email: supportEmail,
+        phone, // Yeni
+        address, // Yeni
         timezone,
         language,
         maintenance_mode_active: maintenanceMode,
@@ -439,6 +447,37 @@ const SettingsPage: React.FC = () => {
                       type="email" 
                       value={supportEmail}
                       onChange={(e) => setSupportEmail(e.target.value)}
+                      className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Yeni Eklenen İletişim Alanları */}
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="phone" className="text-gray-900 dark:text-white flex items-center gap-2">
+                      <Phone className="h-4 w-4" />
+                      Telefon Numarası
+                    </Label>
+                    <Input 
+                      id="phone" 
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+90 (555) 123 45 67"
+                      className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="address" className="text-gray-900 dark:text-white flex items-center gap-2">
+                      <MapPin className="h-4 w-4" />
+                      Adres
+                    </Label>
+                    <Textarea 
+                      id="address" 
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="Şirket adresi..."
+                      rows={2}
                       className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
                     />
                   </div>
