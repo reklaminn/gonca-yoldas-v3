@@ -216,7 +216,7 @@ const ProgramForm: React.FC = () => {
       // Reset form with all data
       reset({
         title: program.title,
-        short_title: program.short_title,
+        short_title: program.short_title || '',
         title_en: program.title_en || '',
         age_group: program.age_group,
         age_range: program.age_range,
@@ -225,12 +225,12 @@ const ProgramForm: React.FC = () => {
         iyzilink: program.iyzilink || '',
         duration: program.duration,
         schedule: program.schedule,
-        lessons_per_week: program.lessons_per_week,
-        lesson_duration: program.lesson_duration,
-        max_students: program.max_students,
-        status: program.status,
-        featured: program.featured,
-        sort_order: program.sort_order,
+        lessons_per_week: program.lessons_per_week || 1,
+        lesson_duration: program.lesson_duration || '',
+        max_students: program.max_students || 10,
+        status: program.status || 'draft',
+        featured: program.featured || false,
+        sort_order: program.sort_order || 0,
         features: programFeatures.length > 0
           ? programFeatures.map((f: any) => ({ text: f.feature_text }))
           : [{ text: '' }],
@@ -440,7 +440,9 @@ const ProgramForm: React.FC = () => {
         );
 
         if (!updateResponse.ok) {
-          throw new Error('Program güncellenemedi');
+          const errorData = await updateResponse.json().catch(() => null) || await updateResponse.text();
+          console.error('❌ [ProgramForm] Update response error:', errorData);
+          throw new Error(`Program güncellenemedi: ${typeof errorData === 'object' ? errorData.message || JSON.stringify(errorData) : errorData}`);
         }
 
         programId = id;
@@ -484,7 +486,9 @@ const ProgramForm: React.FC = () => {
         );
 
         if (!createResponse.ok) {
-          throw new Error('Program oluşturulamadı');
+          const errorData = await createResponse.json().catch(() => null) || await createResponse.text();
+          console.error('❌ [ProgramForm] Create response error:', errorData);
+          throw new Error(`Program oluşturulamadı: ${typeof errorData === 'object' ? errorData.message || JSON.stringify(errorData) : errorData}`);
         }
 
         const newProgram = await createResponse.json();
