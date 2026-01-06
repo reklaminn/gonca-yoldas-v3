@@ -16,11 +16,12 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
-import { createOrder } from '@/services/orders';
+import { createOrder, type OrderData } from '@/services/orders';
 import { getActivePaymentMethods, type PaymentMethod, type BankTransferConfig } from '@/services/paymentSettings';
 import { isInvoiceEnabled, shouldShowPricesWithVAT } from '@/services/generalSettings';
 import { useAuthStore } from '@/store/authStore';
 import type { Program } from '@/hooks/usePrograms';
+import { supabase } from '@/lib/supabaseClient';
 
 // --- Helpers ---
 const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -41,12 +42,14 @@ const Checkout: React.FC = () => {
   const [searchParams] = useSearchParams();
   const programSlug = searchParams.get('program');
   const optionId = searchParams.get('option');
+  const dateId = searchParams.get('date'); // URL'den tarihi al
   
   const { user } = useAuthStore();
   const userEmail = user?.email || '';
 
   const [program, setProgram] = useState<Program | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<any>(null);
+  const [selectedDate, setSelectedDate] = useState<any>(null); // Seçilen tarih objesi
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -135,7 +138,6 @@ const Checkout: React.FC = () => {
         // Parse custom fields from metadata
         if (prog.metadata?.custom_fields && Array.isArray(prog.metadata.custom_fields)) {
           setCustomFields(prog.metadata.custom_fields);
-          // Initialize default values for checkboxes
           const initialValues: Record<string, any> = {};
           prog.metadata.custom_fields.forEach((field: CustomField) => {
             if (field.type === 'checkbox') {
@@ -145,6 +147,7 @@ const Checkout: React.FC = () => {
           setCustomFieldValues(initialValues);
         }
 
+        // Paket seçimi
         if (optionId && prog.metadata?.pricing_options) {
           const foundPackage = prog.metadata.pricing_options.find((opt: any) => opt.id === optionId);
           if (foundPackage) {
@@ -152,14 +155,19 @@ const Checkout: React.FC = () => {
           }
         }
 
+        // Tarih seçimi
+        if (dateId && prog.metadata?.program_dates) {
+          const foundDate = prog.metadata.program_dates.find((d: any) => d.id === dateId);
+          if (foundDate) {
+            setSelectedDate(foundDate);
+          }
+        }
+
         const methods = await getActivePaymentMethods();
-        
-        // Ödeme yöntemlerini istenen sıraya göre diz: Kredi Kartı -> Havale -> Güvenli Ödeme
         const sortOrder = ['credit_card', 'bank_transfer', 'iyzilink'];
         methods.sort((a, b) => {
           const indexA = sortOrder.indexOf(a.payment_method);
           const indexB = sortOrder.indexOf(b.payment_method);
-          // Listede olmayanları en sona at
           return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
         });
 
@@ -181,10 +189,9 @@ const Checkout: React.FC = () => {
     };
     
     init();
-  }, [programSlug, optionId, navigate, userEmail]);
+  }, [programSlug, optionId, dateId, navigate, userEmail]);
 
   const validateField = (field: string, value: any): string => {
-    // Check if it's a custom field
     const customField = customFields.find(f => f.id === field);
     if (customField) {
       if (customField.required) {
@@ -259,11 +266,8 @@ const Checkout: React.FC = () => {
 
   const handleBlur = (field: string) => {
     setTouched(prev => ({ ...prev, [field]: true }));
-    
-    // Check if it's a custom field
     const isCustom = customFields.some(f => f.id === field);
     const value = isCustom ? customFieldValues[field] : formData[field as keyof typeof formData];
-    
     setErrors(prev => ({ ...prev, [field]: validateField(field, value) }));
   };
 
@@ -272,24 +276,20 @@ const Checkout: React.FC = () => {
     toast.success(`${label} kopyalandı`);
   };
 
-  // --- SECURITY: RATE LIMIT CHECK ---
   const checkCheckoutRateLimit = () => {
     const STORAGE_KEY = 'checkout_attempts';
-    const MAX_ATTEMPTS = 5; // 5 attempts
-    const TIME_WINDOW = 10 * 60 * 1000; // 10 minutes
+    const MAX_ATTEMPTS = 5;
+    const TIME_WINDOW = 10 * 60 * 1000;
 
     try {
       const attempts = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
       const now = Date.now();
-      
-      // Filter out old attempts
       const recentAttempts = attempts.filter((timestamp: number) => now - timestamp < TIME_WINDOW);
       
       if (recentAttempts.length >= MAX_ATTEMPTS) {
         return false;
       }
 
-      // Add new attempt
       recentAttempts.push(now);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(recentAttempts));
       return true;
@@ -298,27 +298,55 @@ const Checkout: React.FC = () => {
     }
   };
 
+  const triggerSendPulseEvent = async (orderData: any) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const payload = {
+        email: orderData.email,
+        phone: orderData.phone,
+        event_name: 'purchase',
+        variables: {
+          program_title: orderData.programTitle,
+          program_date: selectedDate?.title || '', // SendPulse'a tarih bilgisini gönder
+          order_id: orderData.id,
+          amount: orderData.totalAmount,
+          payment_method: orderData.paymentMethod,
+          full_name: orderData.fullName
+        }
+      };
+
+      await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-purchase-event`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify(payload)
+      });
+    } catch (error) {
+      console.error('SendPulse trigger error:', error);
+      // Hata olsa bile kullanıcıya hissettirme, arka planda logla
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // 1. SECURITY: Rate Limit Check
     if (!checkCheckoutRateLimit()) {
       toast.error('Çok fazla ödeme denemesi yaptınız. Lütfen güvenliğiniz için 10 dakika bekleyin.');
       return;
     }
 
-    // 2. SECURITY: Prevent Double Submission
     if (isProcessing) return;
 
     const newErrors: Record<string, string> = {};
     
-    // Validate standard fields
     Object.keys(formData).forEach(key => {
       const err = validateField(key, formData[key as keyof typeof formData]);
       if (err) newErrors[key] = err;
     });
 
-    // Validate custom fields
     customFields.forEach(field => {
       const err = validateField(field.id, customFieldValues[field.id]);
       if (err) newErrors[field.id] = err;
@@ -326,8 +354,6 @@ const Checkout: React.FC = () => {
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
-      
-      // Mark all as touched
       const allTouched = { ...touched };
       Object.keys(formData).forEach(k => allTouched[k] = true);
       customFields.forEach(f => allTouched[f.id] = true);
@@ -348,13 +374,23 @@ const Checkout: React.FC = () => {
         ? `${program!.title} - ${selectedPackage.title}`
         : program!.title;
 
-      // Prepare custom fields data with labels for better readability in admin
       const customFieldsData: Record<string, any> = {};
       customFields.forEach(field => {
         customFieldsData[field.label] = customFieldValues[field.id];
       });
 
-      const orderId = await createOrder({
+      // Tarih bilgisini metadata'ya ekle
+      const metadata = {
+        program_date_id: selectedDate?.id,
+        program_date_title: selectedDate?.title,
+        ...customFieldsData
+      };
+
+      // Explicitly type paymentStatus to match OrderData interface
+      const paymentStatus: 'pending' | 'completed' | 'failed' | 'refunded' = 
+        selectedPaymentMethod === 'credit_card' ? 'completed' : 'pending';
+
+      const orderData: OrderData = {
         ...formData,
         programId: program!.id.toString(),
         programSlug: program!.slug,
@@ -368,14 +404,20 @@ const Checkout: React.FC = () => {
         totalAmount: calcTotal,
         paymentMethod: selectedPaymentMethod,
         installment: parseInt(formData.installment),
-        paymentStatus: selectedPaymentMethod === 'credit_card' ? 'completed' : 'pending',
+        paymentStatus: paymentStatus,
         cardName: formData.cardName,
         cardLastFour: formData.cardNumber.replace(/\D/g, '').slice(-4),
         sendpulseSent: false,
-        customFields: customFieldsData // Pass custom fields
-      });
+        customFields: customFieldsData,
+        metadata: metadata // Metadata'yı gönder
+      };
+
+      const orderId = await createOrder(orderData);
 
       if (orderId) {
+        // SendPulse'a veri gönder
+        await triggerSendPulseEvent({ ...orderData, id: orderId });
+
         if (selectedPaymentMethod === 'iyzilink' && program?.iyzilink) {
           window.location.href = `${program.iyzilink}?orderId=${orderId}`;
         } else {
@@ -998,6 +1040,12 @@ const Checkout: React.FC = () => {
                           <div className="flex items-center gap-1 mb-1">
                             <Package className="h-3 w-3 text-[var(--color-primary)]" />
                             <span className="text-xs font-medium text-[var(--color-primary)]">{selectedPackage.title}</span>
+                          </div>
+                        )}
+                        {selectedDate && (
+                          <div className="flex items-center gap-1 mb-1">
+                            <Calendar className="h-3 w-3 text-[var(--color-primary)]" />
+                            <span className="text-xs font-medium text-[var(--color-primary)]">{selectedDate.title}</span>
                           </div>
                         )}
                         <p className="text-xs text-[var(--fg-muted)]">{program.age_range} Yaş • {program.duration}</p>

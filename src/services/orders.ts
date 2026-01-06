@@ -36,7 +36,7 @@ export interface Order {
   sendpulse_sent?: boolean;
   sendpulse_sent_at?: string;
   sendpulse_error?: string;
-  metadata?: Record<string, any>; // Added metadata support
+  metadata?: Record<string, any>;
 }
 
 export interface OrderData {
@@ -69,13 +69,20 @@ export interface OrderData {
   sendpulseSent: boolean;
   sendpulseSentAt?: string;
   sendpulseError?: string;
-  customFields?: Record<string, any>; // Added custom fields support
+  customFields?: Record<string, any>;
+  metadata?: Record<string, any>; // Metadata için genel alan
 }
 
 export async function createOrder(orderData: OrderData): Promise<string | null> {
   try {
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData.session?.user?.id || null;
+
+    // Custom fields ve diğer metadata'yı birleştir
+    const finalMetadata = {
+      ...orderData.customFields,
+      ...orderData.metadata
+    };
 
     const orderInsertData = {
       user_id: userId,
@@ -107,7 +114,7 @@ export async function createOrder(orderData: OrderData): Promise<string | null> 
       card_name: orderData.cardName,
       card_last_four: orderData.cardLastFour,
       sendpulse_sent: orderData.sendpulseSent,
-      metadata: orderData.customFields || {}, // Save custom fields to metadata column
+      metadata: finalMetadata, 
     };
 
     const { data: order, error } = await supabase

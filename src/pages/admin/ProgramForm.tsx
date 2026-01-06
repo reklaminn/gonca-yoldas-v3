@@ -31,7 +31,8 @@ import {
   Type,
   AlignLeft,
   Calendar,
-  CheckSquare
+  CheckSquare,
+  Clock
 } from 'lucide-react';
 import { useAgeGroups } from '@/hooks/useAgeGroups';
 import { useAuthStore } from '@/store/authStore';
@@ -54,7 +55,15 @@ interface CustomField {
   type: 'text' | 'textarea' | 'number' | 'date' | 'select' | 'checkbox';
   required: boolean;
   placeholder?: string;
-  options?: string; // Comma separated string for UI, converted to array for storage
+  options?: string;
+}
+
+// Yeni eklenen Program Tarihi arayüzü
+interface ProgramDate {
+  id: string;
+  title: string; // Örn: "15 Ekim Grubu"
+  status: 'active' | 'passive';
+  label: 'collecting' | 'active' | 'full' | 'soon';
 }
 
 interface ProgramFormData {
@@ -79,8 +88,16 @@ interface ProgramFormData {
   faqs: { question: string; answer: string }[];
   pricing_options: PricingOption[];
   custom_fields: CustomField[];
+  program_dates: ProgramDate[]; // Yeni alan
   metadata: any;
 }
+
+const DATE_LABELS = {
+  collecting: 'Talep Toplanıyor',
+  active: 'Aktif (Kayıt Açık)',
+  full: 'Doldu',
+  soon: 'Yakında'
+};
 
 const ProgramForm: React.FC = () => {
   const navigate = useNavigate();
@@ -131,6 +148,7 @@ const ProgramForm: React.FC = () => {
       faqs: [{ question: '', answer: '' }],
       pricing_options: [],
       custom_fields: [],
+      program_dates: [], // Varsayılan boş liste
       metadata: {}
     },
   });
@@ -180,6 +198,16 @@ const ProgramForm: React.FC = () => {
     name: 'custom_fields',
   });
 
+  // Yeni tarih alanı için field array
+  const {
+    fields: programDateFields,
+    append: appendProgramDate,
+    remove: removeProgramDate,
+  } = useFieldArray({
+    control,
+    name: 'program_dates',
+  });
+
   const ageGroup = watch('age_group');
 
   // Update age_range when age_group changes
@@ -226,8 +254,6 @@ const ProgramForm: React.FC = () => {
       if (!program) {
         throw new Error('Program bulunamadı');
       }
-
-      console.log('✅ [ProgramForm] Program loaded:', program.title);
 
       // Fetch features
       const featuresResponse = await fetch(
@@ -283,6 +309,14 @@ const ProgramForm: React.FC = () => {
         options: Array.isArray(field.options) ? field.options.join(', ') : (field.options || '')
       })) || [];
 
+      // Parse program dates
+      const programDates = metadata.program_dates?.map((date: any) => ({
+        id: date.id,
+        title: date.title,
+        status: date.status || 'active',
+        label: date.label || 'collecting'
+      })) || [];
+
       // Reset form with all data
       reset({
         title: program.title,
@@ -312,6 +346,7 @@ const ProgramForm: React.FC = () => {
           : [{ question: '', answer: '' }],
         pricing_options: pricingOptions,
         custom_fields: customFields,
+        program_dates: programDates,
         metadata: metadata
       });
 
@@ -332,11 +367,9 @@ const ProgramForm: React.FC = () => {
 
   // Load data only once on mount
   useEffect(() => {
-    console.log('📝 [ProgramForm] Component mounted, isEditMode:', isEditMode, 'id:', id);
     if (isEditMode && id && session?.access_token) {
       loadProgramData(id);
     } else if (isEditMode && !session?.access_token) {
-      console.error('❌ [ProgramForm] No access token for edit mode');
       setInitialLoading(false);
     } else {
       setInitialLoading(false);
@@ -391,8 +424,6 @@ const ProgramForm: React.FC = () => {
 
   const uploadImage = async (file: File, programId: string): Promise<string> => {
     try {
-      console.log('📤 [ProgramForm] Uploading image...');
-      
       const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
       const fileName = `${programId}-${Date.now()}.${fileExt}`;
       
@@ -415,9 +446,7 @@ const ProgramForm: React.FC = () => {
         throw new Error('Resim yüklenemedi');
       }
 
-      const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/program-images/${fileName}`;
-      console.log('✅ [ProgramForm] Image uploaded:', publicUrl);
-      return publicUrl;
+      return `${SUPABASE_URL}/storage/v1/object/public/program-images/${fileName}`;
     } catch (err) {
       console.error('❌ [ProgramForm] Upload error:', err);
       throw err;
@@ -431,9 +460,7 @@ const ProgramForm: React.FC = () => {
     }
 
     try {
-      console.log('💾 [ProgramForm] Saving program...');
       setLoading(true);
-
       const slug = generateSlug(data.title);
 
       // Check if slug exists
@@ -457,7 +484,6 @@ const ProgramForm: React.FC = () => {
 
       let imageUrl = existingImageUrl;
 
-      // Upload image if new file selected
       if (imageFile) {
         try {
           setUploadProgress(50);
@@ -465,14 +491,13 @@ const ProgramForm: React.FC = () => {
           imageUrl = await uploadImage(imageFile, tempId);
           setUploadProgress(100);
         } catch (err) {
-          console.error('❌ [ProgramForm] Image upload failed:', err);
           showNotification('error', 'Resim yüklenirken bir hata oluştu');
           setLoading(false);
           return;
         }
       }
 
-      // Prepare metadata with pricing options and custom fields
+      // Prepare metadata
       const updatedMetadata = {
         ...data.metadata,
         pricing_options: data.pricing_options.map(opt => ({
@@ -491,6 +516,12 @@ const ProgramForm: React.FC = () => {
           options: field.type === 'select' && field.options 
             ? field.options.split(',').map(o => o.trim()).filter(o => o !== '') 
             : []
+        })),
+        program_dates: data.program_dates.map(date => ({
+          id: date.id || `date_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          title: date.title,
+          status: date.status,
+          label: date.label
         }))
       };
 
@@ -536,9 +567,7 @@ const ProgramForm: React.FC = () => {
         );
 
         if (!updateResponse.ok) {
-          const errorData = await updateResponse.json().catch(() => null) || await updateResponse.text();
-          console.error('❌ [ProgramForm] Update response error:', errorData);
-          throw new Error(`Program güncellenemedi: ${typeof errorData === 'object' ? errorData.message || JSON.stringify(errorData) : errorData}`);
+          throw new Error('Program güncellenemedi');
         }
 
         programId = id;
@@ -582,9 +611,7 @@ const ProgramForm: React.FC = () => {
         );
 
         if (!createResponse.ok) {
-          const errorData = await createResponse.json().catch(() => null) || await createResponse.text();
-          console.error('❌ [ProgramForm] Create response error:', errorData);
-          throw new Error(`Program oluşturulamadı: ${typeof errorData === 'object' ? errorData.message || JSON.stringify(errorData) : errorData}`);
+          throw new Error('Program oluşturulamadı');
         }
 
         const newProgram = await createResponse.json();
@@ -663,7 +690,6 @@ const ProgramForm: React.FC = () => {
         );
       }
 
-      console.log('✅ [ProgramForm] Program saved successfully');
       showNotification(
         'success',
         isEditMode ? 'Program başarıyla güncellendi' : 'Program başarıyla oluşturuldu'
@@ -674,8 +700,7 @@ const ProgramForm: React.FC = () => {
       }, 1500);
     } catch (err) {
       console.error('❌ [ProgramForm] Save error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Program kaydedilirken bir hata oluştu';
-      showNotification('error', errorMessage);
+      showNotification('error', 'Program kaydedilirken bir hata oluştu');
     } finally {
       setLoading(false);
       setUploadProgress(0);
@@ -688,9 +713,6 @@ const ProgramForm: React.FC = () => {
     }
   };
 
-  console.log('📝 [ProgramForm] Rendering, initialLoading:', initialLoading, 'loading:', loading);
-
-  // Show loading spinner while fetching data in edit mode
   if (initialLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -1107,7 +1129,93 @@ const ProgramForm: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Custom Registration Fields (New Section) */}
+        {/* Program Dates (New Section) */}
+        <Card className="border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-900/10">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-orange-600" />
+              <CardTitle>Eğitim Tarihleri (Dönemler)</CardTitle>
+            </div>
+            <CardDescription>
+              Bu eğitimin açılacağı tarihleri ve durumlarını buradan yönetebilirsiniz.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {programDateFields.map((field, index) => (
+              <div key={field.id} className="p-4 bg-white dark:bg-gray-800 rounded-lg border shadow-sm space-y-4 relative">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeProgramDate(index)}
+                  className="absolute top-2 right-2 text-red-500 hover:bg-red-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+
+                <div className="grid md:grid-cols-2 gap-4 pr-8">
+                  <div className="space-y-2">
+                    <Label>Tarih / Dönem Açıklaması</Label>
+                    <Input
+                      {...register(`program_dates.${index}.title` as const, { required: true })}
+                      placeholder="Örn: 15 Ekim - 15 Ocak Grubu"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Durum Etiketi</Label>
+                    <Select
+                      value={watch(`program_dates.${index}.label`)}
+                      onValueChange={(value: any) => setValue(`program_dates.${index}.label`, value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Etiket seçin" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="collecting">Talep Toplanıyor</SelectItem>
+                        <SelectItem value="active">Aktif (Kayıt Açık)</SelectItem>
+                        <SelectItem value="full">Doldu</SelectItem>
+                        <SelectItem value="soon">Yakında</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 pt-2">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id={`date-status-${index}`}
+                      checked={watch(`program_dates.${index}.status`) === 'active'}
+                      onCheckedChange={(checked) => setValue(`program_dates.${index}.status`, checked ? 'active' : 'passive')}
+                    />
+                    <Label htmlFor={`date-status-${index}`} className="cursor-pointer">
+                      {watch(`program_dates.${index}.status`) === 'active' ? (
+                        <span className="text-green-600 font-medium flex items-center gap-1">
+                          <CheckCircle className="h-3 w-3" /> Yayında
+                        </span>
+                      ) : (
+                        <span className="text-gray-500 flex items-center gap-1">
+                          <Clock className="h-3 w-3" /> Pasif
+                        </span>
+                      )}
+                    </Label>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => appendProgramDate({ id: '', title: '', status: 'active', label: 'collecting' })}
+              className="w-full border-dashed border-2 py-6 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Yeni Tarih Ekle
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Custom Registration Fields */}
         <Card className="border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-900/10">
           <CardHeader>
             <div className="flex items-center gap-2">

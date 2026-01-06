@@ -15,6 +15,13 @@ import {
   CarouselPrevious,
 } from '@/components/ui/carousel';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Clock,
   Users,
   Calendar,
@@ -33,7 +40,9 @@ import {
   Check,
   Quote,
   Phone,
-  Mail
+  Mail,
+  Hourglass,
+  Ban
 } from 'lucide-react';
 
 const ProgramDetail: React.FC = () => {
@@ -42,6 +51,7 @@ const ProgramDetail: React.FC = () => {
   const { program, loading, error } = useProgramDetails(slug || '');
   const { testimonials, loading: testimonialsLoading } = useTestimonials(true);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+  const [selectedDateId, setSelectedDateId] = useState<string>("");
 
   // --- Hero Animation Logic ---
   const x = useMotionValue(0);
@@ -76,10 +86,28 @@ const ProgramDetail: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [slug]);
 
+  const metadata = program?.metadata || {};
+  const installments = metadata.installments || [];
+  const pricingOptions = metadata.pricing_options || [];
+  const programDates = metadata.program_dates || [];
+
   // Set default selected option if pricing options exist
   useEffect(() => {
-    if (program?.metadata?.pricing_options && program.metadata.pricing_options.length > 0) {
-      setSelectedOptionId(program.metadata.pricing_options[0].id);
+    if (pricingOptions.length > 0) {
+      setSelectedOptionId(pricingOptions[0].id);
+    }
+  }, [program]);
+
+  // Set default selected date (first available)
+  useEffect(() => {
+    if (programDates.length > 0) {
+      // Find first date that is active/collecting
+      const availableDate = programDates.find((d: any) => 
+        d.status === 'active' && (d.label === 'active' || d.label === 'collecting')
+      );
+      if (availableDate) {
+        setSelectedDateId(availableDate.id);
+      }
     }
   }, [program]);
 
@@ -135,19 +163,52 @@ const ProgramDetail: React.FC = () => {
     );
   }
 
-  const metadata = program.metadata || {};
-  const installments = metadata.installments || [];
-  const pricingOptions = metadata.pricing_options || [];
-
   // Determine current price and title based on selection
   const selectedOption = pricingOptions.find((opt: any) => opt.id === selectedOptionId);
   const currentPrice = selectedOption ? selectedOption.price : program.price;
   const currentTitle = selectedOption ? selectedOption.title : program.title;
 
   const handleEnrollClick = () => {
-    const checkoutUrl = `/siparis?program=${program.slug}${selectedOptionId ? `&option=${selectedOptionId}` : ''}`;
+    let checkoutUrl = `/siparis?program=${program.slug}`;
+    if (selectedOptionId) checkoutUrl += `&option=${selectedOptionId}`;
+    if (selectedDateId) checkoutUrl += `&date=${selectedDateId}`;
     navigate(checkoutUrl);
   };
+
+  // Helper to render date status badge
+  const renderDateStatus = (label: string) => {
+    switch (label) {
+      case 'collecting':
+        return (
+          <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200 ml-auto">
+            Talep Toplanıyor
+          </Badge>
+        );
+      case 'active':
+        return (
+          <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-200 border-green-200 ml-auto">
+            Kayıt Açık
+          </Badge>
+        );
+      case 'full':
+        return (
+          <Badge variant="secondary" className="bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200 ml-auto">
+            Doldu
+          </Badge>
+        );
+      case 'soon':
+        return (
+          <Badge variant="secondary" className="bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200 ml-auto">
+            Yakında
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
+
+  // Filter visible dates
+  const visibleDates = programDates.filter((d: any) => d.status === 'active');
 
   return (
     <div className="bg-[var(--bg)] min-h-screen flex flex-col">
@@ -501,6 +562,43 @@ const ProgramDetail: React.FC = () => {
             <Card className="border-[var(--border)] bg-[var(--bg-card)] sticky top-24 z-30 shadow-sm">
               <CardContent className="p-6">
                 
+                {/* Program Dates Section - Dropdown */}
+                {visibleDates.length > 0 && (
+                  <div className="mb-6">
+                    <h3 className="font-semibold text-[var(--fg)] mb-3 flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-[var(--color-primary)]" />
+                      Eğitim Dönemi Seçiniz
+                    </h3>
+                    <Select
+                      value={selectedDateId}
+                      onValueChange={setSelectedDateId}
+                    >
+                      <SelectTrigger className="w-full h-auto py-3">
+                        <SelectValue placeholder="Bir tarih seçiniz" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {visibleDates.map((date: any) => {
+                          const isSelectable = date.label === 'active' || date.label === 'collecting';
+                          return (
+                            <SelectItem
+                              key={date.id}
+                              value={date.id}
+                              disabled={!isSelectable}
+                              className="py-3 cursor-pointer"
+                            >
+                              <div className="flex items-center justify-between w-full gap-4 min-w-[240px]">
+                                <span className="font-medium">{date.title}</span>
+                                {renderDateStatus(date.label)}
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                    <Separator className="my-6 bg-[var(--border)]" />
+                  </div>
+                )}
+
                 {/* Pricing Options Selection */}
                 {pricingOptions.length > 0 ? (
                   <div className="mb-6 space-y-3">

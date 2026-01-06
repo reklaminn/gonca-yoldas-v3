@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Facebook, Instagram, Mail, Phone, MapPin, Shield } from 'lucide-react';
+import { Facebook, Instagram, Mail, Phone, MapPin, Shield, Youtube } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuthStore } from '@/store/authStore';
@@ -48,6 +48,7 @@ const Footer: React.FC = () => {
   const socialLinks = [
     { icon: Facebook, href: 'https://facebook.com', label: 'Facebook' },
     { icon: Instagram, href: 'https://instagram.com', label: 'Instagram' },
+    { icon: Youtube, href: 'https://youtube.com', label: 'Youtube' },
   ];
 
   return (

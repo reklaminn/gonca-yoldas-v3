@@ -1,107 +1,81 @@
-/*
-  # Use Specific SendPulse Event URL and Raw Payload
-  1. Use the specific, pre-authenticated URL provided by SendPulse (stored in SENDPULSE_PURCHASE_URL).
-  2. Send the raw orderData directly as the payload, as the URL handles authentication.
-  3. Removed dependency on SENDPULSE_EVENT_ID and SECRET.
-*/
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
-};
+// SendPulse Event API URL
+const SENDPULSE_API_URL = 'https://events.sendpulse.com/events/name/purchase';
 
-serve(async (req)=>{
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', {
-      headers: corsHeaders
+serve(async (req) => {
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ success: false, message: 'Method Not Allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json' },
     });
   }
 
   try {
-    // Parse request body
-    const { orderData, orderId } = await req.json();
+    const payload = await req.json();
+    console.log('Function received payload:', payload);
+
+    // Payload'ı SendPulse formatına uygun hale getir
+    // Eğer client zaten doğru formatta gönderiyorsa direkt kullanabiliriz
+    // Ancak burada bir güvenlik katmanı veya veri doğrulama eklenebilir
     
-    // --- SendPulse URL Retrieval and Payload Simplification ---
-    const sendPulseUrl = Deno.env.get('SENDPULSE_PURCHASE_URL');
+    const sendPulseBody = {
+      email: payload.email,
+      phone: payload.phone,
+      event_date: new Date().toISOString().split('T')[0],
+      variables: {
+        program_title: payload.variables?.program_title || '',
+        program_date: payload.variables?.program_date || '', // Tarih bilgisi
+        order_id: payload.variables?.order_id || '',
+        amount: payload.variables?.amount || 0,
+        payment_method: payload.variables?.payment_method || '',
+        full_name: payload.variables?.full_name || ''
+      }
+    };
 
-    if (!sendPulseUrl) {
-        throw new Error('SendPulse URL (SENDPULSE_PURCHASE_URL) not configured in Deno environment.');
-    }
-
-    // Use orderData directly as the payload, as per SendPulse instructions for the specific URL
-    const sendPulsePayload = orderData; 
-    // ---------------------------------------------------------
-
-    console.log('📦 Processing purchase event for order:', orderId);
-    console.log('📧 Customer email:', orderData.email);
-
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Send to SendPulse
-    console.log('📤 Sending raw payload to SendPulse specific endpoint:', sendPulseUrl);
-    const sendPulseResponse = await fetch(sendPulseUrl, {
+    const sendPulseResponse = await fetch(SENDPULSE_API_URL, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(sendPulsePayload) // Send the raw order data
+      body: JSON.stringify(sendPulseBody),
     });
 
-    const sendPulseSuccess = sendPulseResponse.ok;
-    let sendPulseError = null;
+    const responseStatus = sendPulseResponse.status;
+    const responseText = await sendPulseResponse.text();
+    
+    console.log(`SendPulse API Status: ${responseStatus}`);
 
-    if (!sendPulseSuccess) {
-      const errorText = await sendPulseResponse.text();
-      sendPulseError = `SendPulse API error: ${sendPulseResponse.status} - ${errorText}`;
-      console.error('❌ SendPulse error:', sendPulseError);
-    } else {
-      console.log('✅ SendPulse event sent successfully');
+    if (!sendPulseResponse.ok) {
+      console.error('SendPulse external API call failed:', responseStatus, responseText);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: `SendPulse API returned status ${responseStatus}`,
+          details: responseText
+        }),
+        {
+          status: 200, 
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
     }
 
-    // Update order in database
-    console.log('💾 Updating order status in database...');
-    const { error: updateError } = await supabase.from('orders').update({
-      sendpulse_sent: sendPulseSuccess,
-      sendpulse_sent_at: sendPulseSuccess ? new Date().toISOString() : null,
-      sendpulse_error: sendPulseError
-    }).eq('id', orderId);
-
-    if (updateError) {
-      console.error('❌ Database update error:', updateError);
-      throw new Error(`Database update failed: ${updateError.message}`);
-    }
-
-    console.log('✅ Order status updated in database');
-
-    // Return response
-    return new Response(JSON.stringify({
-      success: true,
-      sendpulse_sent: sendPulseSuccess,
-      message: sendPulseSuccess ? 'Purchase event sent successfully' : 'Order created but SendPulse failed'
-    }), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      },
-      status: 200
-    });
+    return new Response(
+      JSON.stringify({ success: true, message: 'Event sent successfully', data: JSON.parse(responseText) }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
   } catch (error) {
-    console.error('❌ Function error:', error);
-    return new Response(JSON.stringify({
-      success: false,
-      error: error.message
-    }), {
-      headers: {
-        ...corsHeaders,
-      'Content-Type': 'application/json'
-      },
-      status: 500
-    });
+    console.error('Internal function error:', error);
+    return new Response(
+      JSON.stringify({ success: false, message: 'Internal server error processing request' }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
   }
 });
