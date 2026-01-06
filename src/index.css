@@ -148,6 +148,7 @@
     background: linear-gradient(90deg, #ec4f4f 0%, #ec8ebb 100%);
     transform: scale(1.03);
     box-shadow: var(--shadow-lg);
+    color: #ffffff !important;
   }
 
   .btn-primary:disabled {

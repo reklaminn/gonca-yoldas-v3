@@ -62,13 +62,16 @@ export const AgeGroupsManager: React.FC<AgeGroupsManagerProps> = ({ embedded = f
         ? Math.max(...ageGroups.map(g => g.sort_order || 0)) 
         : 0;
       
+      console.log('Adding age group:', { label: newLabel, value: newValue, sortOrder: maxOrder + 1 });
+      
       await addAgeGroup(newLabel, newValue, maxOrder + 1);
       setNewLabel('');
       setNewValue('');
-      toast.success('Yaş grubu eklendi');
+      toast.success('Yaş grubu başarıyla eklendi');
       notifyChange();
     } catch (error) {
-      toast.error('Ekleme başarısız oldu');
+      console.error('Age group add error:', error);
+      toast.error('Ekleme başarısız oldu: ' + (error instanceof Error ? error.message : 'Bilinmeyen hata'));
     } finally {
       setIsAdding(false);
     }
@@ -93,6 +96,7 @@ export const AgeGroupsManager: React.FC<AgeGroupsManagerProps> = ({ embedded = f
       toast.success('Güncellendi');
       notifyChange();
     } catch (error) {
+      console.error('Update error:', error);
       toast.error('Güncelleme başarısız');
     }
   };
@@ -103,6 +107,7 @@ export const AgeGroupsManager: React.FC<AgeGroupsManagerProps> = ({ embedded = f
       toast.success('Silindi');
       notifyChange();
     } catch (error) {
+      console.error('Delete error:', error);
       toast.error('Silme işlemi başarısız');
     }
   };
@@ -122,6 +127,7 @@ export const AgeGroupsManager: React.FC<AgeGroupsManagerProps> = ({ embedded = f
       await refetch();
       notifyChange();
     } catch (error) {
+      console.error('Move error:', error);
       toast.error('Sıralama güncellenemedi');
     }
   };
@@ -180,7 +186,7 @@ export const AgeGroupsManager: React.FC<AgeGroupsManagerProps> = ({ embedded = f
               key={group.id} 
               className="group flex flex-col sm:flex-row items-center gap-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--bg)] hover:shadow-sm transition-all"
             >
-              {/* Sıralama Kontrolleri - GÜNCELLENDİ */}
+              {/* Sıralama Kontrolleri */}
               <div className="flex sm:flex-col gap-1 mr-2">
                 <Button
                   variant="ghost"

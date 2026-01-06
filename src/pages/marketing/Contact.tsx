@@ -1,28 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { MapPin, Phone, Mail, Send, MessageCircle, Loader2, CheckCircle2 } from 'lucide-react';
+import { MapPin, Phone, Mail, Send, MessageCircle, Loader2 } from 'lucide-react';
 import { usePageContent } from '@/hooks/usePageContent';
 import { getGeneralSettings, GeneralSettings } from '@/services/generalSettings';
-import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
+import { sendContactEvent } from '@/services/sendpulse';
+import { useNavigate } from 'react-router-dom';
 
 const Contact: React.FC = () => {
-  // Hero başlığı ve açıklaması için page content kullanmaya devam ediyoruz
   const { content, loading: contentLoading } = usePageContent('contact');
-  
-  // İletişim bilgileri için General Settings kullanıyoruz
   const [settings, setSettings] = useState<GeneralSettings | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(true);
+  const navigate = useNavigate();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
   const [userIp, setUserIp] = useState<string>('');
   
+  // SPAM KORUMASI İÇİN REFERANSLAR
+  const formLoadTime = useRef<number>(Date.now()); // Sayfa ne zaman yüklendi?
+  const [honeypot, setHoneypot] = useState(''); // Botlar için gizli alan
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -31,17 +33,20 @@ const Contact: React.FC = () => {
     message: '',
   });
 
-  // Ayarları çek
   useEffect(() => {
     const fetchSettings = async () => {
-      const data = await getGeneralSettings();
-      setSettings(data);
-      setSettingsLoading(false);
+      try {
+        const data = await getGeneralSettings();
+        setSettings(data);
+      } catch (e) {
+        console.error('Settings fetch error:', e);
+      } finally {
+        setSettingsLoading(false);
+      }
     };
     fetchSettings();
   }, []);
 
-  // IP adresini al
   useEffect(() => {
     fetch('https://api.ipify.org?format=json')
       .then(res => res.json())
@@ -49,37 +54,135 @@ const Contact: React.FC = () => {
       .catch(() => setUserIp('unknown'));
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const checkRateLimit = () => {
+    const STORAGE_KEY = 'contact_form_attempts';
+    const MAX_ATTEMPTS = 3;
+    const TIME_WINDOW = 5 * 60 * 1000; // 5 dakika
 
     try {
-      const { error } = await supabase
-        .from('contact_submissions')
-        .insert([
-          {
-            name: formData.name,
-            email: formData.email,
-            phone: formData.phone,
-            subject: formData.subject,
-            message: formData.message,
-            ip_address: userIp,
-            referer_page: window.location.href,
-            status: 'new'
-          }
-        ]);
-
-      if (error) throw error;
-
-      setIsSuccess(true);
-      toast.success('Mesajınız başarıyla iletildi.');
+      const attempts = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      const now = Date.now();
       
+      // Süresi geçmiş denemeleri temizle
+      const recentAttempts = attempts.filter((timestamp: number) => now - timestamp < TIME_WINDOW);
+      
+      if (recentAttempts.length >= MAX_ATTEMPTS) {
+        return false;
+      }
+
+      // Yeni denemeyi ekle
+      recentAttempts.push(now);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(recentAttempts));
+      return true;
+    } catch {
+      return true; // LocalStorage hatası olursa engelleme
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // --- SPAM KORUMASI KONTROLLERİ ---
+    
+    // 1. Honeypot Kontrolü: Eğer gizli alan doluysa bottur.
+    if (honeypot) {
+      console.warn('Bot detected: Honeypot filled');
+      // Botu kandırmak için başarılı gibi davranabiliriz veya sessizce dönebiliriz
+      return; 
+    }
+
+    // 2. Zaman Kontrolü: Form çok hızlı gönderildiyse (örn: 2 saniyeden az)
+    const timeElapsed = Date.now() - formLoadTime.current;
+    if (timeElapsed < 2000) {
+      console.warn('Bot detected: Form submitted too quickly');
+      toast.error('Lütfen formu doldurmak için biraz bekleyin.');
+      return;
+    }
+
+    // 3. Rate Limit Kontrolü
+    if (!checkRateLimit()) {
+      toast.error('Çok fazla mesaj gönderdiniz. Lütfen 5 dakika bekleyin.');
+      return;
+    }
+
+    // --- NORMAL AKIŞ ---
+
+    setIsSubmitting(true);
+    console.log('🚀 Form submission started...');
+
+    try {
+      // 1. ÖNCE VERİTABANINA KAYDET (Direct REST API ile)
+      console.log('💾 Step 1: Saving to Supabase DB (via REST API)...');
+      
+      const insertPayload = {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        subject: formData.subject,
+        message: formData.message,
+        ip_address: userIp,
+        referer_page: window.location.href,
+        status: 'new'
+      };
+      
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      if (!supabaseUrl || !supabaseKey) {
+        throw new Error('Supabase environment variables missing');
+      }
+
+      // Direct Fetch Call
+      const response = await fetch(`${supabaseUrl}/rest/v1/contact_submissions`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(insertPayload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ REST API Error:', errorText);
+        throw new Error(`Database save failed: ${response.status}`);
+      }
+
+      const responseData = await response.json();
+      const submission = responseData[0];
+
+      if (!submission) {
+        throw new Error('No submission ID returned');
+      }
+
+      console.log('✅ Saved to Supabase successfully. ID:', submission.id);
+
+      // 2. SENDPULSE'A GÖNDER (Edge Function Invoke)
+      console.log('📧 Step 2: Invoking SendPulse Edge Function...');
+      
+      try {
+        await sendContactEvent({
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          subject: formData.subject,
+          message: formData.message
+        }, submission.id);
+        console.log('✅ SendPulse process completed.');
+      } catch (spError) {
+        console.warn('⚠️ SendPulse failed but DB save was successful:', spError);
+      }
+
+      // 3. BAŞARI VE YÖNLENDİRME
+      toast.success('Mesajınız başarıyla alındı.');
       setFormData({ name: '', email: '', phone: '', subject: '', message: '' });
-      setTimeout(() => setIsSuccess(false), 5000);
+      navigate('/tesekkurler');
 
     } catch (error: any) {
-      console.error('Form submission error:', error);
-      toast.error('Mesaj gönderilirken bir hata oluştu.');
+      console.error('❌ Form submission error:', error);
+      toast.error(`Mesaj gönderilemedi: ${error.message || 'Bilinmeyen hata'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -89,24 +192,24 @@ const Contact: React.FC = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // Dinamik iletişim bilgileri (Çalışma saatleri kaldırıldı)
+  // Boş olan iletişim bilgilerini filtrele
   const contactInfo = [
     { 
       icon: MapPin, 
       title: 'Adres', 
-      content: settings?.address || 'Adres bilgisi yükleniyor...' 
+      content: settings?.address 
     },
     { 
       icon: Phone, 
       title: 'Telefon', 
-      content: settings?.phone || 'Telefon bilgisi yükleniyor...' 
+      content: settings?.phone 
     },
     { 
       icon: Mail, 
       title: 'E-posta', 
-      content: settings?.contact_email || 'E-posta bilgisi yükleniyor...' 
+      content: settings?.contact_email 
     },
-  ];
+  ].filter(info => info.content && info.content.trim() !== '');
 
   if (contentLoading || settingsLoading) {
     return (
@@ -144,45 +247,49 @@ const Contact: React.FC = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {isSuccess ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
-                    <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-                      <CheckCircle2 className="h-10 w-10 text-green-600" />
-                    </div>
-                    <h3 className="text-2xl font-bold text-[var(--fg)]">Mesajınız Alındı!</h3>
-                    <Button variant="outline" onClick={() => setIsSuccess(false)}>Yeni Mesaj Gönder</Button>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  {/* HONEYPOT FIELD (Hidden from users, visible to bots) */}
+                  <div className="hidden" aria-hidden="true">
+                    <label htmlFor="website_url">Website</label>
+                    <input
+                      type="text"
+                      id="website_url"
+                      name="website_url"
+                      tabIndex={-1}
+                      autoComplete="off"
+                      value={honeypot}
+                      onChange={(e) => setHoneypot(e.target.value)}
+                    />
                   </div>
-                ) : (
-                  <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="grid md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <Label htmlFor="name" className="text-[var(--fg)]">Ad Soyad *</Label>
-                        <Input id="name" name="name" value={formData.name} onChange={handleChange} required disabled={isSubmitting} className="bg-[var(--bg-input)] border-[var(--border)] text-[var(--fg)]" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="email" className="text-[var(--fg)]">E-posta *</Label>
-                        <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required disabled={isSubmitting} className="bg-[var(--bg-input)] border-[var(--border)] text-[var(--fg)]" />
-                      </div>
-                    </div>
-                    <div className="grid md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <Label htmlFor="phone" className="text-[var(--fg)]">Telefon</Label>
-                        <Input id="phone" name="phone" type="tel" value={formData.phone} onChange={handleChange} disabled={isSubmitting} className="bg-[var(--bg-input)] border-[var(--border)] text-[var(--fg)]" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="subject" className="text-[var(--fg)]">Konu *</Label>
-                        <Input id="subject" name="subject" value={formData.subject} onChange={handleChange} required disabled={isSubmitting} className="bg-[var(--bg-input)] border-[var(--border)] text-[var(--fg)]" />
-                      </div>
+
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="name" className="text-[var(--fg)]">Ad Soyad *</Label>
+                      <Input id="name" name="name" value={formData.name} onChange={handleChange} required disabled={isSubmitting} className="bg-[var(--bg-input)] border-[var(--border)] text-[var(--fg)]" />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="message" className="text-[var(--fg)]">Mesajınız *</Label>
-                      <Textarea id="message" name="message" value={formData.message} onChange={handleChange} rows={6} required disabled={isSubmitting} className="bg-[var(--bg-input)] border-[var(--border)] text-[var(--fg)]" />
+                      <Label htmlFor="email" className="text-[var(--fg)]">E-posta *</Label>
+                      <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required disabled={isSubmitting} className="bg-[var(--bg-input)] border-[var(--border)] text-[var(--fg)]" />
                     </div>
-                    <Button type="submit" size="lg" className="w-full md:w-auto" disabled={isSubmitting}>
-                      {isSubmitting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Gönderiliyor...</> : <><Send className="h-4 w-4 mr-2" /> Mesaj Gönder</>}
-                    </Button>
-                  </form>
-                )}
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="phone" className="text-[var(--fg)]">Telefon</Label>
+                      <Input id="phone" name="phone" type="tel" value={formData.phone} onChange={handleChange} disabled={isSubmitting} className="bg-[var(--bg-input)] border-[var(--border)] text-[var(--fg)]" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="subject" className="text-[var(--fg)]">Konu *</Label>
+                      <Input id="subject" name="subject" value={formData.subject} onChange={handleChange} required disabled={isSubmitting} className="bg-[var(--bg-input)] border-[var(--border)] text-[var(--fg)]" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="message" className="text-[var(--fg)]">Mesajınız *</Label>
+                    <Textarea id="message" name="message" value={formData.message} onChange={handleChange} rows={6} required disabled={isSubmitting} className="bg-[var(--bg-input)] border-[var(--border)] text-[var(--fg)]" />
+                  </div>
+                  <Button type="submit" size="lg" className="w-full md:w-auto" disabled={isSubmitting}>
+                    {isSubmitting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Gönderiliyor...</> : <><Send className="h-4 w-4 mr-2" /> Mesaj Gönder</>}
+                  </Button>
+                </form>
               </CardContent>
             </Card>
           </motion.div>

@@ -8,9 +8,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Loader2, ShieldCheck, CreditCard, Building2, Copy, 
-  ChevronRight, AlertCircle, ExternalLink, Package, Shield, Zap, User
+  ChevronRight, AlertCircle, ExternalLink, Package, Shield, Zap, User,
+  FileText, Calendar
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
@@ -25,17 +27,26 @@ const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email
 const validatePhone = (phone: string) => /^5\d{9}$/.test(phone.replace(/\D/g, ''));
 const validateTC = (tc: string) => /^[1-9][0-9]{10}$/.test(tc);
 
+interface CustomField {
+  id: string;
+  label: string;
+  type: 'text' | 'textarea' | 'number' | 'date' | 'select' | 'checkbox';
+  required: boolean;
+  placeholder?: string;
+  options?: string; // Comma separated string
+}
+
 const Checkout: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const programSlug = searchParams.get('program');
-  const optionId = searchParams.get('option'); // URL'den opsiyon ID'sini al
+  const optionId = searchParams.get('option');
   
   const { user } = useAuthStore();
   const userEmail = user?.email || '';
 
   const [program, setProgram] = useState<Program | null>(null);
-  const [selectedPackage, setSelectedPackage] = useState<any>(null); // Seçilen paket
+  const [selectedPackage, setSelectedPackage] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -43,6 +54,7 @@ const Checkout: React.FC = () => {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('credit_card');
   const [invoiceSystemEnabled, setInvoiceSystemEnabled] = useState(true);
   const [showPricesWithVAT, setShowPricesWithVAT] = useState(true);
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -63,11 +75,13 @@ const Checkout: React.FC = () => {
     kvkkConsent: false,
   });
 
+  // State for custom field answers
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
+
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   // --- Calculations ---
-  // Eğer paket seçildiyse paketin fiyatını, yoksa programın ana fiyatını kullan
   const basePrice = selectedPackage ? Number(selectedPackage.price) : (program?.price || 0);
   const taxRate = 20;
   let calcSubtotal = 0, calcTaxAmount = 0, calcTotal = 0;
@@ -95,7 +109,6 @@ const Checkout: React.FC = () => {
           return;
         }
 
-        // Direct fetch to Supabase REST API
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
         
@@ -119,7 +132,19 @@ const Checkout: React.FC = () => {
         const prog = data[0];
         setProgram(prog);
 
-        // Seçilen paketi bul ve ayarla
+        // Parse custom fields from metadata
+        if (prog.metadata?.custom_fields && Array.isArray(prog.metadata.custom_fields)) {
+          setCustomFields(prog.metadata.custom_fields);
+          // Initialize default values for checkboxes
+          const initialValues: Record<string, any> = {};
+          prog.metadata.custom_fields.forEach((field: CustomField) => {
+            if (field.type === 'checkbox') {
+              initialValues[field.id] = false;
+            }
+          });
+          setCustomFieldValues(initialValues);
+        }
+
         if (optionId && prog.metadata?.pricing_options) {
           const foundPackage = prog.metadata.pricing_options.find((opt: any) => opt.id === optionId);
           if (foundPackage) {
@@ -128,6 +153,16 @@ const Checkout: React.FC = () => {
         }
 
         const methods = await getActivePaymentMethods();
+        
+        // Ödeme yöntemlerini istenen sıraya göre diz: Kredi Kartı -> Havale -> Güvenli Ödeme
+        const sortOrder = ['credit_card', 'bank_transfer', 'iyzilink'];
+        methods.sort((a, b) => {
+          const indexA = sortOrder.indexOf(a.payment_method);
+          const indexB = sortOrder.indexOf(b.payment_method);
+          // Listede olmayanları en sona at
+          return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
+        });
+
         setPaymentMethods(methods);
         if (methods.length > 0) {
           setSelectedPaymentMethod(methods[0].payment_method);
@@ -149,6 +184,20 @@ const Checkout: React.FC = () => {
   }, [programSlug, optionId, navigate, userEmail]);
 
   const validateField = (field: string, value: any): string => {
+    // Check if it's a custom field
+    const customField = customFields.find(f => f.id === field);
+    if (customField) {
+      if (customField.required) {
+        if (customField.type === 'checkbox') {
+          return !value ? 'Bu alanın onaylanması zorunludur' : '';
+        }
+        if (!value || (typeof value === 'string' && !value.trim())) {
+          return 'Bu alan zorunludur';
+        }
+      }
+      return '';
+    }
+
     switch (field) {
       case 'fullName': return !value.trim() ? 'Ad Soyad gereklidir' : '';
       case 'email': return !validateEmail(value) ? 'Geçerli bir e-posta girin' : '';
@@ -177,7 +226,6 @@ const Checkout: React.FC = () => {
         return '';
       case 'kvkkConsent': return !value ? 'Onay gereklidir' : '';
       
-      // Credit Card Validations
       case 'cardName':
         if (selectedPaymentMethod === 'credit_card') return !value.trim() ? 'Kart üzerindeki isim gereklidir' : '';
         return '';
@@ -202,9 +250,21 @@ const Checkout: React.FC = () => {
     }
   };
 
+  const handleCustomFieldChange = (fieldId: string, value: any) => {
+    setCustomFieldValues(prev => ({ ...prev, [fieldId]: value }));
+    if (touched[fieldId]) {
+      setErrors(prev => ({ ...prev, [fieldId]: validateField(fieldId, value) }));
+    }
+  };
+
   const handleBlur = (field: string) => {
     setTouched(prev => ({ ...prev, [field]: true }));
-    setErrors(prev => ({ ...prev, [field]: validateField(field, formData[field as keyof typeof formData]) }));
+    
+    // Check if it's a custom field
+    const isCustom = customFields.some(f => f.id === field);
+    const value = isCustom ? customFieldValues[field] : formData[field as keyof typeof formData];
+    
+    setErrors(prev => ({ ...prev, [field]: validateField(field, value) }));
   };
 
   const copyToClipboard = (text: string, label: string) => {
@@ -212,18 +272,66 @@ const Checkout: React.FC = () => {
     toast.success(`${label} kopyalandı`);
   };
 
+  // --- SECURITY: RATE LIMIT CHECK ---
+  const checkCheckoutRateLimit = () => {
+    const STORAGE_KEY = 'checkout_attempts';
+    const MAX_ATTEMPTS = 5; // 5 attempts
+    const TIME_WINDOW = 10 * 60 * 1000; // 10 minutes
+
+    try {
+      const attempts = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      const now = Date.now();
+      
+      // Filter out old attempts
+      const recentAttempts = attempts.filter((timestamp: number) => now - timestamp < TIME_WINDOW);
+      
+      if (recentAttempts.length >= MAX_ATTEMPTS) {
+        return false;
+      }
+
+      // Add new attempt
+      recentAttempts.push(now);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(recentAttempts));
+      return true;
+    } catch {
+      return true;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // 1. SECURITY: Rate Limit Check
+    if (!checkCheckoutRateLimit()) {
+      toast.error('Çok fazla ödeme denemesi yaptınız. Lütfen güvenliğiniz için 10 dakika bekleyin.');
+      return;
+    }
+
+    // 2. SECURITY: Prevent Double Submission
+    if (isProcessing) return;
+
     const newErrors: Record<string, string> = {};
+    
+    // Validate standard fields
     Object.keys(formData).forEach(key => {
       const err = validateField(key, formData[key as keyof typeof formData]);
       if (err) newErrors[key] = err;
     });
+
+    // Validate custom fields
+    customFields.forEach(field => {
+      const err = validateField(field.id, customFieldValues[field.id]);
+      if (err) newErrors[field.id] = err;
+    });
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
-      setTouched(Object.keys(formData).reduce((a, b) => ({ ...a, [b]: true }), {}));
+      
+      // Mark all as touched
+      const allTouched = { ...touched };
+      Object.keys(formData).forEach(k => allTouched[k] = true);
+      customFields.forEach(f => allTouched[f.id] = true);
+      setTouched(allTouched);
       
       const firstErrorField = document.querySelector('[data-invalid="true"]');
       if (firstErrorField) {
@@ -236,10 +344,15 @@ const Checkout: React.FC = () => {
 
     setIsProcessing(true);
     try {
-      // Program başlığını paket bilgisiyle güncelle
       const finalProgramTitle = selectedPackage 
         ? `${program!.title} - ${selectedPackage.title}`
         : program!.title;
+
+      // Prepare custom fields data with labels for better readability in admin
+      const customFieldsData: Record<string, any> = {};
+      customFields.forEach(field => {
+        customFieldsData[field.label] = customFieldValues[field.id];
+      });
 
       const orderId = await createOrder({
         ...formData,
@@ -258,7 +371,8 @@ const Checkout: React.FC = () => {
         paymentStatus: selectedPaymentMethod === 'credit_card' ? 'completed' : 'pending',
         cardName: formData.cardName,
         cardLastFour: formData.cardNumber.replace(/\D/g, '').slice(-4),
-        sendpulseSent: false
+        sendpulseSent: false,
+        customFields: customFieldsData // Pass custom fields
       });
 
       if (orderId) {
@@ -289,6 +403,112 @@ const Checkout: React.FC = () => {
       );
     }
     return null;
+  };
+
+  const renderCustomField = (field: CustomField) => {
+    const isError = !!(errors[field.id] && touched[field.id]);
+    
+    switch (field.type) {
+      case 'textarea':
+        return (
+          <div key={field.id} className="space-y-2">
+            <Label>
+              {field.label} {field.required && <span className="text-red-500">*</span>}
+            </Label>
+            <Textarea
+              placeholder={field.placeholder}
+              value={customFieldValues[field.id] || ''}
+              onChange={e => handleCustomFieldChange(field.id, e.target.value)}
+              onBlur={() => handleBlur(field.id)}
+              className={isError ? 'border-red-500' : ''}
+              data-invalid={isError}
+            />
+            {renderError(field.id)}
+          </div>
+        );
+      
+      case 'select':
+        const options = field.options ? field.options.split(',').map(o => o.trim()) : [];
+        return (
+          <div key={field.id} className="space-y-2">
+            <Label>
+              {field.label} {field.required && <span className="text-red-500">*</span>}
+            </Label>
+            <Select
+              value={customFieldValues[field.id] || ''}
+              onValueChange={val => handleCustomFieldChange(field.id, val)}
+            >
+              <SelectTrigger className={isError ? 'border-red-500' : ''} data-invalid={isError}>
+                <SelectValue placeholder={field.placeholder || "Seçiniz"} />
+              </SelectTrigger>
+              <SelectContent>
+                {options.map((opt, idx) => (
+                  <SelectItem key={idx} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {renderError(field.id)}
+          </div>
+        );
+
+      case 'checkbox':
+        return (
+          <div key={field.id} className="space-y-2">
+            <div className={`flex items-start gap-3 p-4 rounded-xl border transition-colors ${isError ? 'bg-red-50 border-red-200' : 'bg-[var(--surface-2)] border-[var(--border)]'}`}>
+              <Checkbox
+                id={field.id}
+                checked={!!customFieldValues[field.id]}
+                onCheckedChange={checked => handleCustomFieldChange(field.id, checked)}
+                data-invalid={isError}
+              />
+              <Label htmlFor={field.id} className="text-sm leading-relaxed cursor-pointer">
+                {field.label} {field.required && <span className="text-red-500">*</span>}
+              </Label>
+            </div>
+            {renderError(field.id)}
+          </div>
+        );
+
+      case 'date':
+        return (
+          <div key={field.id} className="space-y-2">
+            <Label>
+              {field.label} {field.required && <span className="text-red-500">*</span>}
+            </Label>
+            <div className="relative">
+              <Input
+                type="date"
+                value={customFieldValues[field.id] || ''}
+                onChange={e => handleCustomFieldChange(field.id, e.target.value)}
+                onBlur={() => handleBlur(field.id)}
+                className={isError ? 'border-red-500' : ''}
+                data-invalid={isError}
+              />
+              <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            </div>
+            {renderError(field.id)}
+          </div>
+        );
+
+      default: // text, number
+        return (
+          <div key={field.id} className="space-y-2">
+            <Label>
+              {field.label} {field.required && <span className="text-red-500">*</span>}
+            </Label>
+            <Input
+              type={field.type === 'number' ? 'number' : 'text'}
+              placeholder={field.placeholder}
+              value={customFieldValues[field.id] || ''}
+              onChange={e => handleCustomFieldChange(field.id, e.target.value)}
+              onBlur={() => handleBlur(field.id)}
+              className={isError ? 'border-red-500' : ''}
+              data-invalid={isError}
+            />
+            {renderError(field.id)}
+          </div>
+        );
+    }
   };
 
   if (isLoading) {
@@ -382,6 +602,23 @@ const Checkout: React.FC = () => {
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* 1.5 Özel Kayıt Alanları (Varsa) */}
+                {customFields.length > 0 && (
+                  <Card className="card bg-[var(--surface-1)] border-[var(--border)]">
+                    <CardHeader className="pb-4">
+                      <CardTitle className="flex items-center gap-2 text-xl">
+                        <div className="w-8 h-8 rounded-lg bg-[var(--color-primary-alpha)] flex items-center justify-center text-[var(--color-primary)] text-sm">
+                          <FileText className="h-4 w-4" />
+                        </div>
+                        Katılımcı Bilgileri
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {customFields.map(field => renderCustomField(field))}
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* 2. Fatura Bilgileri */}
                 {invoiceSystemEnabled && (

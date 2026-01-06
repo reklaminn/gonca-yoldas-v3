@@ -26,7 +26,12 @@ import {
   Image as ImageIcon,
   Link as LinkIcon,
   Package,
-  List
+  List,
+  Settings,
+  Type,
+  AlignLeft,
+  Calendar,
+  CheckSquare
 } from 'lucide-react';
 import { useAgeGroups } from '@/hooks/useAgeGroups';
 import { useAuthStore } from '@/store/authStore';
@@ -40,7 +45,16 @@ interface PricingOption {
   title: string;
   price: number;
   description: string;
-  details: string; // We'll handle this as a newline-separated string in the form
+  details: string;
+}
+
+interface CustomField {
+  id: string;
+  label: string;
+  type: 'text' | 'textarea' | 'number' | 'date' | 'select' | 'checkbox';
+  required: boolean;
+  placeholder?: string;
+  options?: string; // Comma separated string for UI, converted to array for storage
 }
 
 interface ProgramFormData {
@@ -64,7 +78,8 @@ interface ProgramFormData {
   outcomes: { text: string }[];
   faqs: { question: string; answer: string }[];
   pricing_options: PricingOption[];
-  metadata: any; // Store raw metadata to preserve other fields
+  custom_fields: CustomField[];
+  metadata: any;
 }
 
 const ProgramForm: React.FC = () => {
@@ -115,6 +130,7 @@ const ProgramForm: React.FC = () => {
       outcomes: [{ text: '' }],
       faqs: [{ question: '', answer: '' }],
       pricing_options: [],
+      custom_fields: [],
       metadata: {}
     },
   });
@@ -153,6 +169,15 @@ const ProgramForm: React.FC = () => {
   } = useFieldArray({
     control,
     name: 'pricing_options',
+  });
+
+  const {
+    fields: customFieldFields,
+    append: appendCustomField,
+    remove: removeCustomField,
+  } = useFieldArray({
+    control,
+    name: 'custom_fields',
   });
 
   const ageGroup = watch('age_group');
@@ -236,14 +261,26 @@ const ProgramForm: React.FC = () => {
       const programFeatures = features?.filter((f: any) => f.feature_type === 'feature') || [];
       const programOutcomes = features?.filter((f: any) => f.feature_type === 'outcome') || [];
 
-      // Parse pricing options from metadata
+      // Parse metadata
       const metadata = program.metadata || {};
+      
+      // Parse pricing options
       const pricingOptions = metadata.pricing_options?.map((opt: any) => ({
         id: opt.id,
         title: opt.title,
         price: opt.price,
         description: opt.description,
         details: Array.isArray(opt.details) ? opt.details.join('\n') : (opt.details || '')
+      })) || [];
+
+      // Parse custom fields
+      const customFields = metadata.custom_fields?.map((field: any) => ({
+        id: field.id,
+        label: field.label,
+        type: field.type,
+        required: field.required,
+        placeholder: field.placeholder || '',
+        options: Array.isArray(field.options) ? field.options.join(', ') : (field.options || '')
       })) || [];
 
       // Reset form with all data
@@ -274,6 +311,7 @@ const ProgramForm: React.FC = () => {
           ? faqs.map((f: any) => ({ question: f.question, answer: f.answer }))
           : [{ question: '', answer: '' }],
         pricing_options: pricingOptions,
+        custom_fields: customFields,
         metadata: metadata
       });
 
@@ -434,7 +472,7 @@ const ProgramForm: React.FC = () => {
         }
       }
 
-      // Prepare metadata with pricing options
+      // Prepare metadata with pricing options and custom fields
       const updatedMetadata = {
         ...data.metadata,
         pricing_options: data.pricing_options.map(opt => ({
@@ -443,6 +481,16 @@ const ProgramForm: React.FC = () => {
           price: Number(opt.price),
           description: opt.description,
           details: opt.details.split('\n').filter(line => line.trim() !== '')
+        })),
+        custom_fields: data.custom_fields.map(field => ({
+          id: field.id || `field_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          label: field.label,
+          type: field.type,
+          required: field.required,
+          placeholder: field.placeholder,
+          options: field.type === 'select' && field.options 
+            ? field.options.split(',').map(o => o.trim()).filter(o => o !== '') 
+            : []
         }))
       };
 
@@ -981,7 +1029,7 @@ const ProgramForm: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Pricing Options (New Section) */}
+        {/* Pricing Options */}
         <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10">
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -1055,6 +1103,118 @@ const ProgramForm: React.FC = () => {
             >
               <Plus className="h-4 w-4 mr-2" />
               Yeni Paket Ekle
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Custom Registration Fields (New Section) */}
+        <Card className="border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-900/10">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Settings className="h-5 w-5 text-purple-600" />
+              <CardTitle>Özel Kayıt Alanları</CardTitle>
+            </div>
+            <CardDescription>
+              Bu program için kayıt sırasında kullanıcılardan istenecek ek bilgileri buradan tanımlayabilirsiniz.
+              (Örn: Çocuğun Adı, Doğum Tarihi, Alerji Durumu vb.)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {customFieldFields.map((field, index) => (
+              <div key={field.id} className="p-4 bg-white dark:bg-gray-800 rounded-lg border shadow-sm space-y-4 relative">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeCustomField(index)}
+                  className="absolute top-2 right-2 text-red-500 hover:bg-red-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+
+                <div className="grid md:grid-cols-2 gap-4 pr-8">
+                  <div className="space-y-2">
+                    <Label>Alan Başlığı (Soru)</Label>
+                    <Input
+                      {...register(`custom_fields.${index}.label` as const, { required: true })}
+                      placeholder="Örn: Çocuğun Adı Soyadı"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Veri Tipi</Label>
+                    <Select
+                      value={watch(`custom_fields.${index}.type`)}
+                      onValueChange={(value: any) => setValue(`custom_fields.${index}.type`, value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Tip seçin" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="text">
+                          <div className="flex items-center gap-2"><Type className="h-4 w-4" /> Kısa Metin</div>
+                        </SelectItem>
+                        <SelectItem value="textarea">
+                          <div className="flex items-center gap-2"><AlignLeft className="h-4 w-4" /> Uzun Metin</div>
+                        </SelectItem>
+                        <SelectItem value="number">
+                          <div className="flex items-center gap-2"><span className="font-mono font-bold text-xs border rounded px-1">123</span> Sayı</div>
+                        </SelectItem>
+                        <SelectItem value="date">
+                          <div className="flex items-center gap-2"><Calendar className="h-4 w-4" /> Tarih</div>
+                        </SelectItem>
+                        <SelectItem value="select">
+                          <div className="flex items-center gap-2"><List className="h-4 w-4" /> Seçim Kutusu</div>
+                        </SelectItem>
+                        <SelectItem value="checkbox">
+                          <div className="flex items-center gap-2"><CheckSquare className="h-4 w-4" /> Onay Kutusu</div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>İpucu Metni (Placeholder)</Label>
+                    <Input
+                      {...register(`custom_fields.${index}.placeholder` as const)}
+                      placeholder="Örn: Lütfen tam ad giriniz"
+                    />
+                  </div>
+                  
+                  <div className="flex items-center gap-4 pt-8">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id={`required-${index}`}
+                        checked={watch(`custom_fields.${index}.required`)}
+                        onCheckedChange={(checked) => setValue(`custom_fields.${index}.required`, checked)}
+                      />
+                      <Label htmlFor={`required-${index}`} className="cursor-pointer">Zorunlu Alan</Label>
+                    </div>
+                  </div>
+                </div>
+
+                {watch(`custom_fields.${index}.type`) === 'select' && (
+                  <div className="space-y-2 bg-gray-50 dark:bg-gray-900 p-3 rounded-md">
+                    <Label className="text-xs font-semibold uppercase text-gray-500">Seçenekler</Label>
+                    <Input
+                      {...register(`custom_fields.${index}.options` as const)}
+                      placeholder="Seçenekleri virgül ile ayırın (Örn: Başlangıç, Orta, İleri)"
+                    />
+                    <p className="text-xs text-gray-500">Kullanıcının seçebileceği değerleri virgül ile ayırarak yazın.</p>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => appendCustomField({ id: '', label: '', type: 'text', required: false, placeholder: '', options: '' })}
+              className="w-full border-dashed border-2 py-6 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Yeni Kayıt Alanı Ekle
             </Button>
           </CardContent>
         </Card>

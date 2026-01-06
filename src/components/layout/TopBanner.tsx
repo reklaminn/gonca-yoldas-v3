@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Facebook, Instagram, Youtube } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePageContent } from '@/hooks/usePageContent';
 
@@ -7,6 +7,13 @@ const TopBanner: React.FC = () => {
   const [isDismissed, setIsDismissed] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const { content, loading } = usePageContent('global');
+
+  // Social Media Links
+  const socialLinks = [
+    { icon: Facebook, href: 'https://www.facebook.com/goncayoldas', label: 'Facebook' },
+    { icon: Instagram, href: 'https://www.instagram.com/goncayoldas', label: 'Instagram' },
+    { icon: Youtube, href: 'https://www.youtube.com/@goncayoldas', label: 'YouTube' },
+  ];
 
   // Parse announcements from JSON
   const announcements = React.useMemo(() => {
@@ -46,24 +53,26 @@ const TopBanner: React.FC = () => {
         initial={{ height: 0, opacity: 0 }}
         animate={{ height: 'auto', opacity: 1 }}
         exit={{ height: 0, opacity: 0 }}
-        className="relative overflow-hidden bg-primary text-white"
+        className="relative overflow-hidden bg-primary text-white z-50"
       >
         <div className="max-w-7xl mx-auto px-4 py-2">
           <div className="flex items-center justify-between min-h-[24px]">
-            {/* Navigation - Left (Only if multiple) */}
-            <div className="flex items-center gap-1 w-20">
+            
+            {/* Left Side: Navigation (if multiple) or Spacer */}
+            <div className="flex items-center gap-1 w-auto min-w-[40px] md:w-1/4">
               {announcements.length > 1 && (
                 <button 
                   onClick={prevAnnouncement}
                   className="p-1 rounded-full hover:bg-white/10 transition-colors"
+                  aria-label="Önceki duyuru"
                 >
                   <ChevronLeft className="h-3 w-3" />
                 </button>
               )}
             </div>
 
-            {/* Content Slider */}
-            <div className="flex-1 relative overflow-hidden h-6">
+            {/* Center: Content Slider */}
+            <div className="flex-1 relative overflow-hidden h-6 max-w-3xl mx-auto">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={currentIndex}
@@ -73,37 +82,61 @@ const TopBanner: React.FC = () => {
                   transition={{ duration: 0.3, ease: "easeOut" }}
                   className="flex items-center justify-center gap-2 absolute inset-0"
                 >
-                  <p className="text-sm font-medium text-center truncate px-4 text-white">
+                  <p className="text-xs md:text-sm font-medium text-center truncate px-2 text-white">
                     {announcements[currentIndex]}
                   </p>
                 </motion.div>
               </AnimatePresence>
             </div>
 
-            {/* Controls - Right */}
-            <div className="flex items-center justify-end gap-2 w-20">
-              {announcements.length > 1 && (
-                <>
-                  <span className="text-[10px] font-mono opacity-60">
-                    {currentIndex + 1}/{announcements.length}
-                  </span>
-                  <button 
-                    onClick={nextAnnouncement}
-                    className="p-1 rounded-full hover:bg-white/10 transition-colors"
+            {/* Right Side: Socials & Controls */}
+            <div className="flex items-center justify-end gap-3 w-auto min-w-[40px] md:w-1/4">
+              
+              {/* Social Icons (Hidden on mobile to save space) */}
+              <div className="hidden md:flex items-center gap-3 border-r border-white/20 pr-3">
+                {socialLinks.map((social) => (
+                  <a
+                    key={social.label}
+                    href={social.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-white/80 transition-colors hover:scale-110 transform duration-200"
+                    aria-label={social.label}
                   >
-                    <ChevronRight className="h-3 w-3" />
-                  </button>
-                </>
-              )}
-              <div className="w-px h-3 bg-white/20 mx-1" />
-              <button
-                onClick={() => setIsDismissed(true)}
-                className="p-1 rounded-lg hover:bg-white/10 transition-colors"
-                aria-label="Kapat"
-              >
-                <X className="h-4 w-4" />
-              </button>
+                    <social.icon className="h-4 w-4" />
+                  </a>
+                ))}
+              </div>
+
+              {/* Controls */}
+              <div className="flex items-center gap-2">
+                {announcements.length > 1 && (
+                  <>
+                    <span className="hidden sm:inline text-[10px] font-mono opacity-60">
+                      {currentIndex + 1}/{announcements.length}
+                    </span>
+                    <button 
+                      onClick={nextAnnouncement}
+                      className="p-1 rounded-full hover:bg-white/10 transition-colors"
+                      aria-label="Sonraki duyuru"
+                    >
+                      <ChevronRight className="h-3 w-3" />
+                    </button>
+                  </>
+                )}
+                
+                {announcements.length > 1 && <div className="w-px h-3 bg-white/20 mx-1 hidden sm:block" />}
+                
+                <button
+                  onClick={() => setIsDismissed(true)}
+                  className="p-1 rounded-lg hover:bg-white/10 transition-colors"
+                  aria-label="Kapat"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
+
           </div>
         </div>
         

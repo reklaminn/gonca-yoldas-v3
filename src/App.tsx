@@ -17,12 +17,13 @@ const About = React.lazy(() => import('./pages/marketing/About'));
 const Programs = React.lazy(() => import('./pages/marketing/Programs'));
 const ProgramDetail = React.lazy(() => import('./pages/marketing/ProgramDetail'));
 const Blog = React.lazy(() => import('./pages/marketing/Blog'));
-const BlogPost = React.lazy(() => import('./pages/marketing/BlogPost')); // Yeni eklendi
+const BlogPost = React.lazy(() => import('./pages/marketing/BlogPost'));
 const Contact = React.lazy(() => import('./pages/marketing/Contact'));
 const LearningPlatform = React.lazy(() => import('./pages/marketing/LearningPlatform'));
 const Checkout = React.lazy(() => import('./pages/marketing/Checkout'));
 const PaymentSuccess = React.lazy(() => import('./pages/marketing/PaymentSuccess'));
 const PaymentFailure = React.lazy(() => import('./pages/marketing/PaymentFailure'));
+const ThankYou = React.lazy(() => import('./pages/marketing/ThankYou')); // YENİ EKLENDİ
 
 // Auth Pages
 const Login = React.lazy(() => import('./pages/auth/Login'));
@@ -291,10 +292,11 @@ function App() {
               <Route path="/programs" element={<Programs />} />
               <Route path="/programs/:slug" element={<ProgramDetail />} />
               <Route path="/blog" element={<Blog />} />
-              <Route path="/blog/:slug" element={<BlogPost />} /> {/* Yeni Route */}
+              <Route path="/blog/:slug" element={<BlogPost />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/learning-platform" element={<LearningPlatform />} />
               <Route path="/siparis" element={<Checkout />} />
+              <Route path="/tesekkurler" element={<ThankYou />} /> {/* YENİ ROTA */}
             </Route>
 
             {/* Payment Routes - Public */}

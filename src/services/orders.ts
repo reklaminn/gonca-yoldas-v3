@@ -36,6 +36,7 @@ export interface Order {
   sendpulse_sent?: boolean;
   sendpulse_sent_at?: string;
   sendpulse_error?: string;
+  metadata?: Record<string, any>; // Added metadata support
 }
 
 export interface OrderData {
@@ -68,6 +69,7 @@ export interface OrderData {
   sendpulseSent: boolean;
   sendpulseSentAt?: string;
   sendpulseError?: string;
+  customFields?: Record<string, any>; // Added custom fields support
 }
 
 export async function createOrder(orderData: OrderData): Promise<string | null> {
@@ -105,6 +107,7 @@ export async function createOrder(orderData: OrderData): Promise<string | null> 
       card_name: orderData.cardName,
       card_last_four: orderData.cardLastFour,
       sendpulse_sent: orderData.sendpulseSent,
+      metadata: orderData.customFields || {}, // Save custom fields to metadata column
     };
 
     const { data: order, error } = await supabase
@@ -116,6 +119,7 @@ export async function createOrder(orderData: OrderData): Promise<string | null> 
     if (error) throw error;
     return order.id;
   } catch (error: any) {
+    console.error('Order creation error:', error);
     toast.error(`Sipariş hatası: ${error.message}`);
     return null;
   }

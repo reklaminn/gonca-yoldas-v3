@@ -37,7 +37,6 @@ const Footer: React.FC = () => {
       { name: 'Hakkımızda', href: '/about' },
       { name: 'Blog', href: '/blog' },
       { name: 'İletişim', href: '/contact' },
-      { name: 'Kariyer', href: '/careers' },
     ],
     legal: [
       { name: 'Gizlilik Politikası', href: '/privacy' },

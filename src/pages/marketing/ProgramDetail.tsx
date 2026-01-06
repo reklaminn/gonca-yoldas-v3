@@ -210,7 +210,7 @@ const ProgramDetail: React.FC = () => {
               </div>
 
               <div className="flex flex-wrap gap-4">
-                <div className="bg-white text-[var(--color-primary)] px-6 py-4 rounded-lg">
+                <div className="bg-white text-[var(--color-primary)] px-6 py-4 rounded-lg shadow-lg">
                   <div className="text-sm text-[var(--color-primary)]/80 font-medium mb-1">
                     {selectedOption ? selectedOption.title : 'Katılım Ücreti'}
                   </div>
@@ -219,7 +219,7 @@ const ProgramDetail: React.FC = () => {
                 <Button
                   size="lg"
                   onClick={handleEnrollClick}
-                  className="bg-white text-[var(--color-primary)] hover:bg-gray-100 font-poppins font-semibold rounded-lg text-lg px-8 transition-all duration-200 hover:scale-105 h-auto"
+                  className="bg-white text-[var(--color-primary)] hover:bg-gray-50 hover:bg-none font-poppins font-semibold rounded-lg text-lg px-8 transition-all duration-200 hover:scale-105 h-auto shadow-lg border-none"
                 >
                   <div className="flex flex-col items-start text-left">
                     <div className="flex items-center">
