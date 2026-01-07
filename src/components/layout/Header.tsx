@@ -16,18 +16,24 @@ const Header: React.FC = () => {
   const location = useLocation();
   const { resolvedTheme } = useTheme();
 
-  // ✅ Profile'dan role kontrolü
   const isAdmin = profile?.role === 'admin';
 
+  // Sayfa değiştiğinde menüyü otomatik kapat (Ekstra güvenlik önlemi)
   useEffect(() => {
-    console.log('🔍 [Header] Auth State from Zustand:', {
-      hasUser: !!user,
-      userEmail: user?.email,
-      profileRole: profile?.role,
-      isAdmin,
-      loading
-    });
-  }, [user, profile, isAdmin, loading]);
+    setIsMenuOpen(false);
+  }, [location.pathname]);
+
+  // Menü açıkken scroll'u engelle
+  useEffect(() => {
+    if (isMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isMenuOpen]);
 
   const navigation = [
     { name: 'Ana Sayfa', href: '/' },
@@ -46,10 +52,13 @@ const Header: React.FC = () => {
   };
 
   const handleNavigation = (href: string) => {
-    console.log('🔵 [Header] Navigating to:', href);
-    navigate(href);
-    setIsMenuOpen(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setIsMenuOpen(false); // Önce menüyü kapat
+    
+    // Kısa bir gecikme ile navigasyonu tetikle (Animasyonun başlamasına izin ver)
+    setTimeout(() => {
+      navigate(href);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 100);
   };
 
   const logoUrl = "https://www.goncayoldas.com/contents/img/logogoncayoldas2.png";
@@ -58,7 +67,7 @@ const Header: React.FC = () => {
     <>
       <TopBanner />
       <motion.header 
-        className="sticky top-0 z-40 border-b shadow-[var(--shadow-sm)]"
+        className="sticky top-0 z-50 border-b shadow-[var(--shadow-sm)]"
         style={{
           backgroundColor: 'var(--bg)',
           backdropFilter: 'blur(12px)',
@@ -70,7 +79,7 @@ const Header: React.FC = () => {
         transition={{ duration: 0.4, ease: 'easeOut' }}
       >
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-16 relative z-50">
             {/* Logo */}
             <button 
               onClick={() => handleNavigation('/')}
@@ -94,18 +103,10 @@ const Header: React.FC = () => {
                       transition: 'filter var(--transition-base)'
                     }}
                   />
-                  {resolvedTheme === 'dark' && (
-                    <div 
-                      className="absolute inset-0 bg-[var(--bg-dark)] mix-blend-color"
-                      style={{ opacity: 0.1 }}
-                    />
-                  )}
                 </motion.div>
               ) : (
                 <motion.span 
                   className="text-2xl font-poppins font-bold bg-gradient-primary bg-clip-text text-transparent"
-                  whileHover={{ scale: 1.05 }}
-                  transition={{ duration: 0.2 }}
                 >
                   Gonca Yoldaş
                 </motion.span>
@@ -120,11 +121,9 @@ const Header: React.FC = () => {
                   <button
                     key={item.name}
                     onClick={() => handleNavigation(item.href)}
-                    aria-current={isActive ? 'page' : undefined}
                     className="px-4 py-2 rounded-lg font-nunito font-medium relative group transition-all"
                     style={{
                       color: isActive ? 'var(--color-primary)' : 'var(--fg)',
-                      transitionDuration: 'var(--transition-fast)',
                     }}
                   >
                     {item.name}
@@ -140,7 +139,7 @@ const Header: React.FC = () => {
               })}
             </nav>
 
-            {/* Right Side Actions */}
+            {/* Right Side Actions (Desktop) */}
             <div className="hidden lg:flex items-center space-x-3">
               <ThemeToggle />
               {!loading && (
@@ -175,89 +174,122 @@ const Header: React.FC = () => {
               <ThemeToggle />
               <motion.button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="p-2 rounded-lg transition-all"
+                className="p-2 rounded-lg transition-all relative z-50"
                 style={{
                   color: 'var(--fg)',
                   backgroundColor: isMenuOpen ? 'var(--hover-overlay)' : 'transparent',
                 }}
                 whileTap={{ scale: 0.95 }}
-                aria-label="Menü"
+                aria-label={isMenuOpen ? "Menüyü Kapat" : "Menüyü Aç"}
               >
-                {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+                <AnimatePresence mode="wait">
+                  {isMenuOpen ? (
+                    <motion.div
+                      key="close"
+                      initial={{ rotate: -90, opacity: 0 }}
+                      animate={{ rotate: 0, opacity: 1 }}
+                      exit={{ rotate: 90, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <X className="h-6 w-6" />
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="menu"
+                      initial={{ rotate: 90, opacity: 0 }}
+                      animate={{ rotate: 0, opacity: 1 }}
+                      exit={{ rotate: -90, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <Menu className="h-6 w-6" />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.button>
             </div>
           </div>
-
-          {/* Mobile Menu */}
-          <AnimatePresence>
-            {isMenuOpen && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.3 }}
-                className="lg:hidden overflow-hidden"
-              >
-                <nav className="flex flex-col space-y-1 py-4 border-t" style={{ borderColor: 'var(--border)' }}>
-                  {navigation.map((item, index) => {
-                    const isActive = isActivePage(item.href);
-                    return (
-                      <motion.div
-                        key={item.name}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                      >
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleNavigation(item.href);
-                          }}
-                          aria-current={isActive ? 'page' : undefined}
-                          className="w-full text-left px-4 py-3 rounded-lg font-nunito font-medium transition-all"
-                          style={{
-                            backgroundColor: isActive ? 'var(--hover-overlay)' : 'transparent',
-                            color: isActive ? 'var(--color-primary)' : 'var(--fg)',
-                          }}
-                        >
-                          {item.name}
-                        </button>
-                      </motion.div>
-                    );
-                  })}
-                  {!loading && (
-                    <div className="flex flex-col space-y-2 px-4 pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
-                      {user ? (
-                        <Button
-                          onClick={() => handleNavigation(isAdmin ? '/admin' : '/dashboard')}
-                          className="btn-primary w-full"
-                        >
-                          {isAdmin ? 'Admin Panel' : 'Panelim'}
-                        </Button>
-                      ) : (
-                        <>
-                          <Button
-                            onClick={() => handleNavigation('/auth/login')}
-                            className="btn-secondary w-full"
-                          >
-                            Giriş Yap
-                          </Button>
-                          <Button
-                            onClick={() => handleNavigation('/auth/signup')}
-                            className="btn-primary w-full"
-                          >
-                            Kayıt Ol
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </nav>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
+
+        {/* Mobile Menu Overlay */}
+        <AnimatePresence>
+          {isMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: '100vh' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+              className="lg:hidden fixed inset-0 top-16 z-40 bg-background/95 backdrop-blur-xl border-t overflow-y-auto"
+              style={{ 
+                borderColor: 'var(--border)',
+                backgroundColor: 'var(--bg)', // Tema uyumlu arka plan
+              }}
+            >
+              <nav className="flex flex-col p-6 space-y-2">
+                {navigation.map((item, index) => {
+                  const isActive = isActivePage(item.href);
+                  return (
+                    <motion.div
+                      key={item.name}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                    >
+                      <button
+                        onClick={() => handleNavigation(item.href)}
+                        className="w-full text-left px-4 py-4 rounded-xl font-nunito font-bold text-lg transition-all flex items-center justify-between"
+                        style={{
+                          backgroundColor: isActive ? 'var(--hover-overlay)' : 'transparent',
+                          color: isActive ? 'var(--color-primary)' : 'var(--fg)',
+                        }}
+                      >
+                        {item.name}
+                        {isActive && (
+                          <motion.div
+                            layoutId="activeIndicator"
+                            className="w-2 h-2 rounded-full bg-primary"
+                          />
+                        )}
+                      </button>
+                    </motion.div>
+                  );
+                })}
+
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                  className="pt-6 mt-4 border-t border-border space-y-3"
+                >
+                  {!loading && (
+                    user ? (
+                      <Button
+                        onClick={() => handleNavigation(isAdmin ? '/admin' : '/dashboard')}
+                        className="btn-primary w-full h-12 text-lg"
+                      >
+                        {isAdmin ? 'Admin Panel' : 'Panelim'}
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          onClick={() => handleNavigation('/auth/login')}
+                          className="btn-ghost w-full h-12 text-lg border border-border"
+                        >
+                          Giriş Yap
+                        </Button>
+                        <Button
+                          onClick={() => handleNavigation('/auth/signup')}
+                          className="btn-primary w-full h-12 text-lg"
+                        >
+                          Kayıt Ol
+                        </Button>
+                      </>
+                    )
+                  )}
+                </motion.div>
+              </nav>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.header>
     </>
   );

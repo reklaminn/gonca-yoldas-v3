@@ -40,25 +40,21 @@ export const useAuthStore = create<AuthState>()(
       profile: null,
       session: null,
       loading: true,
-      setUser: (user) => {
-        console.log('🔵 [Zustand] setUser called:', user?.email);
-        set({ user });
-      },
-      setProfile: (profile) => {
-        console.log('🔵 [Zustand] setProfile called:', profile?.role);
-        set({ profile });
-      },
-      setSession: (session) => {
-        console.log('🔵 [Zustand] setSession called, has token:', !!session?.access_token);
-        set({ session });
-      },
-      setLoading: (loading) => {
-        console.log('🔵 [Zustand] setLoading called:', loading);
-        set({ loading });
-      },
+      setUser: (user) => set({ user }),
+      setProfile: (profile) => set({ profile }),
+      setSession: (session) => set({ session }),
+      setLoading: (loading) => set({ loading }),
       reset: () => {
-        console.log('🔵 [Zustand] reset called - clearing all auth state');
+        console.log('🔴 [AuthStore] Resetleniyor - Tüm veriler siliniyor');
         set({ user: null, profile: null, session: null, loading: false });
+        
+        // LocalStorage temizliği (Sadece auth ile ilgili olanlar)
+        try {
+          localStorage.removeItem('auth-storage');
+          localStorage.removeItem('sb-jlwsapdvizzriomadhxj-auth-token');
+        } catch (e) {
+          console.error('LocalStorage temizlenirken hata:', e);
+        }
       },
     }),
     {
@@ -69,18 +65,6 @@ export const useAuthStore = create<AuthState>()(
         profile: state.profile,
         session: state.session,
       }),
-      onRehydrateStorage: () => (state) => {
-        console.log('🔵 [Zustand] Rehydrated from localStorage:', {
-          hasUser: !!state?.user,
-          hasProfile: !!state?.profile,
-          hasSession: !!state?.session,
-          hasToken: !!state?.session?.access_token,
-          role: state?.profile?.role
-        });
-        if (state) {
-          state.loading = false;
-        }
-      },
     }
   )
 );
