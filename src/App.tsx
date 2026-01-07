@@ -23,7 +23,7 @@ const LearningPlatform = React.lazy(() => import('./pages/marketing/LearningPlat
 const Checkout = React.lazy(() => import('./pages/marketing/Checkout'));
 const PaymentSuccess = React.lazy(() => import('./pages/marketing/PaymentSuccess'));
 const PaymentFailure = React.lazy(() => import('./pages/marketing/PaymentFailure'));
-const ThankYou = React.lazy(() => import('./pages/marketing/ThankYou')); // YENİ EKLENDİ
+const ThankYou = React.lazy(() => import('./pages/marketing/ThankYou'));
 
 // Auth Pages
 const Login = React.lazy(() => import('./pages/auth/Login'));
@@ -62,10 +62,7 @@ const BlogCategories = React.lazy(() => import('./pages/admin/BlogCategories'));
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// ✅ CRITICAL FIX: Helper function with correct headers
 const fetchProfileDirect = async (userId: string, accessToken?: string): Promise<any> => {
-  console.log('🔵 [fetchProfile] Starting fetch for user:', userId);
-  
   try {
     const response = await fetch(
       `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=*`,
@@ -78,21 +75,9 @@ const fetchProfileDirect = async (userId: string, accessToken?: string): Promise
       }
     );
     
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('❌ [fetchProfile] HTTP Error:', response.status, errorData);
-      return null;
-    }
-    
+    if (!response.ok) return null;
     const data = await response.json();
-    
-    if (data && data.length > 0) {
-      console.log('✅ [fetchProfile] Profile found, role:', data[0].role);
-      return data[0];
-    }
-    
-    console.warn('⚠️ [fetchProfile] No profile found for user');
-    return null;
+    return data && data.length > 0 ? data[0] : null;
   } catch (err) {
     console.error('❌ [fetchProfile] Exception:', err);
     return null;
@@ -101,13 +86,6 @@ const fetchProfileDirect = async (userId: string, accessToken?: string): Promise
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; adminOnly?: boolean }> = ({ children, adminOnly = false }) => {
   const { user, profile, loading } = useAuthStore();
-  
-  console.log('🔐 [ProtectedRoute] State:', { 
-    hasUser: !!user, 
-    userRole: profile?.role, 
-    loading, 
-    adminOnly 
-  });
   
   if (loading) {
     return (
@@ -121,160 +99,84 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; adminOnly?: boolean 
   }
 
   if (!user) {
-    console.log('❌ [ProtectedRoute] No user, redirecting to login');
     return <Navigate to="/auth/login" replace />;
   }
   
   if (adminOnly && profile?.role !== 'admin') {
-    console.log('❌ [ProtectedRoute] Not admin (role:', profile?.role, '), redirecting to dashboard');
     return <Navigate to="/dashboard" replace />;
   }
   
-  console.log('✅ [ProtectedRoute] Access granted, role:', profile?.role);
   return <>{children}</>;
 };
 
 function App() {
-  const { setUser, setProfile, setLoading, setSession } = useAuthStore();
+  const { setUser, setProfile, setLoading, setSession, reset } = useAuthStore();
 
   useEffect(() => {
     let mounted = true;
-    let initComplete = false;
-
-    const fetchAndSetProfile = async (userId: string, accessToken: string | undefined, source: string) => {
-      console.log(`🔍 [App] Fetching profile (${source})...`);
-      
-      try {
-        const profileData = await fetchProfileDirect(userId, accessToken);
-        
-        if (!mounted) return;
-        
-        if (profileData) {
-          console.log(`✅ [App] Profile loaded (${source}):`, {
-            role: profileData.role,
-            fullName: profileData.full_name
-          });
-          setProfile(profileData);
-        } else {
-          console.warn(`⚠️ [App] No profile data (${source})`);
-          setProfile(null);
-        }
-      } catch (fetchError: any) {
-        console.error(`❌ [App] Profile fetch failed (${source}):`, fetchError?.message || fetchError);
-        if (mounted) {
-          setProfile(null);
-        }
-      }
-    };
 
     const initAuth = async () => {
       try {
-        console.log('🔐 [App] Starting auth initialization...');
+        console.log('🔐 [App] Auth initialization started...');
         
-        const cachedUser = useAuthStore.getState().user;
-        const cachedProfile = useAuthStore.getState().profile;
-        
-        if (cachedUser && cachedProfile) {
-          console.log('📦 [App] Found cached auth state:', {
-            email: cachedUser.email,
-            role: cachedProfile.role
-          });
-        }
-        
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
+        // 1. Supabase'den GÜNCEL oturum bilgisini al
+        const { data: { session }, error } = await supabase.auth.getSession();
+
         if (!mounted) return;
 
-        if (sessionError) {
-          console.error('❌ [App] Session error:', sessionError);
-          throw sessionError;
-        }
-
-        console.log('✅ [App] Session retrieved:', session ? 'Authenticated' : 'Anonymous');
-
-        if (session?.user) {
-          console.log('👤 [App] User ID:', session.user.id);
-          console.log('📧 [App] User Email:', session.user.email);
-          
+        if (error || !session) {
+          // Oturum yoksa veya hata varsa, temizlik yap
+          console.log('ℹ️ [App] No active session found. Clearing storage.');
+          reset(); // Zustand ve LocalStorage'ı temizle
+        } else {
+          // Oturum varsa state'i güncelle
+          console.log('✅ [App] Active session found:', session.user.email);
           setUser(session.user);
           setSession(session);
           
-          await fetchAndSetProfile(session.user.id, session.access_token, 'init');
-        } else {
-          console.log('ℹ️ [App] No active Supabase session');
-          
-          if (cachedUser) {
-            console.log('🧹 [App] Clearing stale cached auth state');
+          // Profili çek
+          const profileData = await fetchProfileDirect(session.user.id, session.access_token);
+          if (profileData) {
+            setProfile(profileData);
           }
-          setUser(null);
-          setProfile(null);
-          setSession(null);
         }
-
-        console.log('✅ [App] Auth initialization complete');
-        initComplete = true;
       } catch (error) {
-        console.error('❌ [App] Auth initialization failed:', error);
-        if (mounted) {
-          setUser(null);
-          setProfile(null);
-          setSession(null);
-        }
+        console.error('❌ [App] Auth init failed:', error);
+        reset();
       } finally {
         if (mounted) {
-          console.log('✅ [App] Setting loading to false');
-          setLoading(false);
+          setLoading(false); // Yükleme işlemini SADECE burada bitir
         }
       }
     };
 
     initAuth();
 
-    const safetyTimer = setTimeout(() => {
-      if (mounted && useAuthStore.getState().loading) {
-        console.warn('⚠️ [App] Auth timeout: Forcing app load after 12 seconds');
-        setLoading(false);
-      }
-    }, 12000);
-
+    // Auth durum değişikliklerini dinle
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
       
       console.log('🔄 [App] Auth state changed:', event);
       
-      if (event === 'SIGNED_IN' && !initComplete) {
-        console.log('ℹ️ [App] Skipping duplicate SIGNED_IN during init');
-        return;
-      }
-      
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      if (event === 'SIGNED_OUT') {
+        reset(); // Çıkış yapıldığında her şeyi temizle
+        setLoading(false);
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         if (session?.user) {
-          console.log('✅ [App] User signed in:', session.user.id);
           setUser(session.user);
           setSession(session);
-          
-          await fetchAndSetProfile(session.user.id, session.access_token, 'auth-change');
-          
-          if (mounted) {
-            setLoading(false);
-          }
+          const profileData = await fetchProfileDirect(session.user.id, session.access_token);
+          if (profileData) setProfile(profileData);
+          setLoading(false);
         }
-      } else if (event === 'SIGNED_OUT') {
-        console.log('🚪 [App] User signed out');
-        setUser(null);
-        setProfile(null);
-        setSession(null);
-        setLoading(false);
-        localStorage.removeItem('sb-jlwsapdvizzriomadhxj-auth-token');
       }
     });
 
     return () => {
       mounted = false;
-      clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
-  }, [setUser, setProfile, setLoading, setSession]);
+  }, [setUser, setProfile, setLoading, setSession, reset]);
 
   return (
     <ErrorBoundary>
@@ -285,7 +187,7 @@ function App() {
           </div>
         }>
           <Routes>
-            {/* Marketing Routes - Public */}
+            {/* Marketing Routes */}
             <Route element={<MarketingLayout />}>
               <Route path="/" element={<Home />} />
               <Route path="/about" element={<About />} />
@@ -296,20 +198,20 @@ function App() {
               <Route path="/contact" element={<Contact />} />
               <Route path="/learning-platform" element={<LearningPlatform />} />
               <Route path="/siparis" element={<Checkout />} />
-              <Route path="/tesekkurler" element={<ThankYou />} /> {/* YENİ ROTA */}
+              <Route path="/tesekkurler" element={<ThankYou />} />
             </Route>
 
-            {/* Payment Routes - Public */}
+            {/* Payment Routes */}
             <Route path="/odeme-basarili" element={<PaymentSuccess />} />
             <Route path="/odeme-basarisiz" element={<PaymentFailure />} />
             
-            {/* Auth Routes - Public */}
+            {/* Auth Routes */}
             <Route path="/auth/login" element={<Login />} />
             <Route path="/auth/signup" element={<Signup />} />
             <Route path="/auth/forgot-password" element={<ForgotPassword />} />
             <Route path="/auth/reset-password" element={<ResetPassword />} />
 
-            {/* Student Dashboard - Protected */}
+            {/* Student Dashboard */}
             <Route path="/dashboard" element={
               <ErrorBoundary>
                 <ProtectedRoute><DashboardLayout /></ProtectedRoute>
@@ -327,7 +229,7 @@ function App() {
               <Route path="profile" element={<Profile />} />
             </Route>
 
-            {/* Admin Panel - Protected (Admin Only) */}
+            {/* Admin Panel */}
             <Route path="/admin" element={
               <ErrorBoundary>
                 <ProtectedRoute adminOnly><AdminLayout /></ProtectedRoute>
@@ -351,7 +253,6 @@ function App() {
               <Route path="content/testimonials" element={<TestimonialsManagement />} />
             </Route>
 
-            {/* Catch all - Redirect to home */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

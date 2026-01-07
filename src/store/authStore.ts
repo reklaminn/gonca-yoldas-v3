@@ -39,26 +39,25 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       profile: null,
       session: null,
-      loading: true,
+      loading: true, // Başlangıçta her zaman true olmalı
       setUser: (user) => {
-        console.log('🔵 [Zustand] setUser called:', user?.email);
         set({ user });
       },
       setProfile: (profile) => {
-        console.log('🔵 [Zustand] setProfile called:', profile?.role);
         set({ profile });
       },
       setSession: (session) => {
-        console.log('🔵 [Zustand] setSession called, has token:', !!session?.access_token);
         set({ session });
       },
       setLoading: (loading) => {
-        console.log('🔵 [Zustand] setLoading called:', loading);
         set({ loading });
       },
       reset: () => {
         console.log('🔵 [Zustand] reset called - clearing all auth state');
         set({ user: null, profile: null, session: null, loading: false });
+        // LocalStorage'ı da temizle
+        localStorage.removeItem('auth-storage');
+        localStorage.removeItem('sb-jlwsapdvizzriomadhxj-auth-token');
       },
     }),
     {
@@ -68,18 +67,13 @@ export const useAuthStore = create<AuthState>()(
         user: state.user, 
         profile: state.profile,
         session: state.session,
+        // loading state'ini ASLA kaydetme, her yenilemede true başlamalı
       }),
       onRehydrateStorage: () => (state) => {
-        console.log('🔵 [Zustand] Rehydrated from localStorage:', {
-          hasUser: !!state?.user,
-          hasProfile: !!state?.profile,
-          hasSession: !!state?.session,
-          hasToken: !!state?.session?.access_token,
-          role: state?.profile?.role
-        });
-        if (state) {
-          state.loading = false;
-        }
+        console.log('🔵 [Zustand] Rehydrated');
+        // DİKKAT: Burada loading'i false YAPMIYORUZ.
+        // Loading'i kapatma yetkisi sadece App.tsx'teki initAuth fonksiyonunda olmalı.
+        // Bu sayede Supabase kontrolü bitene kadar loading true kalır.
       },
     }
   )
