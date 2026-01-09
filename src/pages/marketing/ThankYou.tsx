@@ -1,10 +1,15 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle, ArrowRight, Home } from 'lucide-react';
+import { CheckCircle, ArrowRight, Home, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 const ThankYou: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const type = searchParams.get('type');
+
+  const isOrder = type === 'order';
+
   return (
     <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center p-4">
       <motion.div 
@@ -18,25 +23,36 @@ const ThankYou: React.FC = () => {
         </div>
         
         <h1 className="text-3xl font-bold text-[var(--fg)] mb-4">
-          Mesajınız Alındı!
+          {isOrder ? 'Siparişiniz Alındı!' : 'Mesajınız Alındı!'}
         </h1>
         
         <p className="text-[var(--fg-muted)] mb-8 text-lg">
-          Bizimle iletişime geçtiğiniz için teşekkür ederiz. Mesajınız bize ulaştı, en kısa sürede size dönüş yapacağız.
+          {isOrder 
+            ? 'Siparişiniz başarıyla oluşturuldu. Detaylar e-posta adresinize gönderildi.' 
+            : 'Bizimle iletişime geçtiğiniz için teşekkür ederiz. Mesajınız bize ulaştı, en kısa sürede size dönüş yapacağız.'}
         </p>
 
         <div className="space-y-3">
+          {isOrder ? (
+             <Link to="/dashboard">
+                <Button className="w-full" size="lg">
+                  <ShoppingBag className="mr-2 h-4 w-4" />
+                  Öğrenci Paneline Git
+                </Button>
+             </Link>
+          ) : (
+            <Link to="/blog">
+              <Button variant="outline" className="w-full" size="lg">
+                Blog Yazılarını Oku
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          )}
+          
           <Link to="/">
-            <Button className="w-full" size="lg">
+            <Button variant={isOrder ? "outline" : "default"} className="w-full" size="lg">
               <Home className="mr-2 h-4 w-4" />
               Anasayfaya Dön
-            </Button>
-          </Link>
-          
-          <Link to="/blog">
-            <Button variant="outline" className="w-full" size="lg">
-              Blog Yazılarını Oku
-              <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </Link>
         </div>

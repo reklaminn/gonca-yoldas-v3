@@ -1,321 +1,193 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
 export interface Program {
-  id: string;
+  id: number | string;
   slug: string;
   title: string;
-  title_tr?: string | null; // Added title_tr
-  short_title: string;
-  title_en?: string | null;
-  age_group: '0-2' | '2-5' | '5-10';
-  age_range: string;
-  description: string;
-  image_url?: string | null;
+  title_tr?: string;
+  title_en?: string;
+  short_title?: string;
+  age?: string;
+  age_group?: string;
+  age_range?: string;
+  description?: string;
+  image_url?: string;
   price: number;
-  iyzilink?: string | null;
-  duration: string;
-  schedule: string;
-  lessons_per_week: number;
-  lesson_duration: string;
-  max_students: number;
-  enrolled_students: number;
-  status: 'active' | 'draft' | 'archived';
-  featured: boolean;
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
-  metadata?: Record<string, any> | null;
+  duration?: string;
+  schedule?: string;
+  lessons_per_week?: number;
+  lesson_duration?: string;
+  max_students?: number;
+  enrolled_students?: number;
+  features?: { id: string; feature_text: string }[];
+  outcomes?: { id: string; feature_text: string }[];
+  faqs?: { id: string; question: string; answer: string }[];
+  featured?: boolean;
+  status?: 'active' | 'passive' | 'draft';
+  iyzilink?: string;
+  metadata?: any;
+  sendpulse_id?: string;
+  sendpulse_upsell_id?: string;
 }
 
-export interface ProgramFeature {
-  id: string;
-  program_id: string;
-  feature_text: string;
-  feature_type: 'feature' | 'outcome';
-  sort_order: number;
-}
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export interface ProgramFAQ {
-  id: string;
-  program_id: string;
-  question: string;
-  answer: string;
-  sort_order: number;
-}
-
-export interface ProgramDetails extends Program {
-  features: ProgramFeature[];
-  outcomes: ProgramFeature[];
-  faqs: ProgramFAQ[];
-}
-
-// Direct fetch to Supabase REST API (bypasses JS client issues)
-async function fetchFromSupabase(tableName: string, query: string): Promise<any> {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  
-  const url = `${supabaseUrl}/rest/v1/${tableName}?${query}`;
-  
-  console.log(`🌐 [usePrograms] Fetching from: ${tableName}`);
-  
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'apikey': supabaseKey,
-      'Authorization': `Bearer ${supabaseKey}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
-    }
-  });
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('❌ [usePrograms] HTTP Error:', response.status, errorText);
-    throw new Error(`HTTP ${response.status}: ${errorText}`);
-  }
-  
-  const data = await response.json();
-  console.log(`✅ [usePrograms] Success, ${tableName} items:`, data?.length || 0);
-  return data;
-}
-
-export function usePrograms(status?: 'active' | 'draft' | 'archived') {
+export const usePrograms = (statusFilter?: string) => {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPrograms();
-  }, [status]);
+  }, []);
 
   const fetchPrograms = async () => {
+    console.log('🔄 [usePrograms] Programlar getiriliyor...');
+    setLoading(true);
+    setError(null);
+
     try {
-      setLoading(true);
-      setError(null);
+      let url = `${SUPABASE_URL}/rest/v1/programs?select=*&order=created_at.desc`;
+      if (statusFilter) {
+         url += `&status=eq.${statusFilter}`;
+      }
+      // Direkt REST API kullan (daha hızlı ve güvenilir)
+      const response = await fetch(url, {
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
 
-      console.log('🔍 [usePrograms] Fetching programs, status:', status || 'all');
-
-      let query = 'order=sort_order.asc';
-      
-      if (status) {
-        query += `&status=eq.${status}`;
+      if (!response.ok) {
+        throw new Error(`REST fetch failed: ${response.statusText}`);
       }
 
-      const data = await fetchFromSupabase('programs', query);
+      const data = await response.json();
+      
+      // Metadata parse et
+      const parsedData = data.map((prog: any) => ({
+        ...prog,
+        metadata: typeof prog.metadata === 'string' ? JSON.parse(prog.metadata) : prog.metadata
+      }));
 
-      console.log('✅ [usePrograms] Programs fetched:', data?.length || 0);
-      setPrograms(data || []);
-      setError(null);
-    } catch (err) {
-      console.error('❌ [usePrograms] Error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch programs';
-      setError(errorMessage);
-      setPrograms([]);
+      console.log(`✅ [usePrograms] REST ile yüklendi: ${parsedData?.length || 0} program`);
+      setPrograms(parsedData || []);
+
+    } catch (err: any) {
+      console.error('❌ [usePrograms] Kritik Hata:', err);
+      setError(err.message || 'Programlar yüklenirken bir hata oluştu.');
     } finally {
       setLoading(false);
     }
   };
 
   return { programs, loading, error, refetch: fetchPrograms };
-}
+};
 
-export function useProgramDetails(slug: string) {
-  const [program, setProgram] = useState<ProgramDetails | null>(null);
+export const useProgramDetails = (slug: string) => {
+  const [program, setProgram] = useState<Program | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (slug) {
-      fetchProgramDetails();
+      fetchProgram();
     }
   }, [slug]);
 
-  const fetchProgramDetails = async () => {
+  const fetchProgram = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      setError(null);
-
-      console.log('🔍 [useProgramDetails] Fetching program:', slug);
-
-      // Fetch program
-      const query = `slug=eq.${encodeURIComponent(slug)}&status=eq.active`;
-      const programData = await fetchFromSupabase('programs', query);
-
-      if (!programData || programData.length === 0) {
-        throw new Error('Program not found');
-      }
-
-      const programItem = programData[0];
-
-      // Fetch features
-      const featuresQuery = `program_id=eq.${programItem.id}&order=sort_order.asc`;
-      const featuresData = await fetchFromSupabase('program_features', featuresQuery);
-
-      // Fetch FAQs
-      const faqsQuery = `program_id=eq.${programItem.id}&order=sort_order.asc`;
-      const faqsData = await fetchFromSupabase('program_faqs', faqsQuery);
-
-      const features = featuresData?.filter((f: ProgramFeature) => f.feature_type === 'feature') || [];
-      const outcomes = featuresData?.filter((f: ProgramFeature) => f.feature_type === 'outcome') || [];
-
-      setProgram({
-        ...programItem,
-        features,
-        outcomes,
-        faqs: faqsData || [],
+      // Direkt REST API kullan
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/programs?slug=eq.${slug}&select=*`, {
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Prefer': 'return=representation',
+          'Accept': 'application/vnd.pgrst.object+json'
+        }
       });
-      setError(null);
-    } catch (err) {
-      console.error('❌ [useProgramDetails] Error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch program details';
-      setError(errorMessage);
-      setProgram(null);
+
+      if (!response.ok) throw new Error('REST fetch failed');
+      
+      const data = await response.json();
+      
+      // Metadata parse et
+      if (data && typeof data.metadata === 'string') {
+        data.metadata = JSON.parse(data.metadata);
+      }
+      
+      setProgram(data);
+
+    } catch (err: any) {
+      console.error('Error fetching program details:', err);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  return { program, loading, error, refetch: fetchProgramDetails };
-}
+  return { program, loading, error, refetch: fetchProgram };
+};
 
-// Keep using Supabase client for mutations (they work fine for admin operations)
-export async function createProgram(programData: Partial<Program>): Promise<Program> {
-  const { data, error } = await supabase
-    .from('programs')
-    .insert([programData])
-    .select()
-    .single();
-
-  if (error) throw error;
-  if (!data) throw new Error('Program creation failed: no data returned.');
-  return data;
-}
-
-export async function updateProgram(id: string, programData: Partial<Program>): Promise<Program> {
-  const { data, error } = await supabase
-    .from('programs')
-    .update(programData)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw error;
-  if (!data) throw new Error('Program update failed: no data returned.');
-  return data;
-}
-
-export async function deleteProgram(id: string) {
-  const { error } = await supabase
-    .from('programs')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
-}
-
-export async function uploadProgramImage(file: File, programId: string) {
+// CRUD Operations - Helper to get token
+const getAccessToken = () => {
   try {
-    console.log('🔄 Starting image upload...');
-    console.log('File:', file.name, 'Size:', file.size, 'Type:', file.type);
-    console.log('Program ID:', programId);
-
-    // Validate file
-    if (!file.type.startsWith('image/')) {
-      throw new Error('Lütfen geçerli bir resim dosyası seçin');
+    const storageKey = 'sb-jlwsapdvizzriomadhxj-auth-token';
+    const sessionStr = localStorage.getItem(storageKey);
+    if (sessionStr) {
+      const session = JSON.parse(sessionStr);
+      return session?.access_token;
     }
-
-    if (file.size > 5 * 1024 * 1024) {
-      throw new Error('Resim boyutu 5MB\'dan küçük olmalıdır');
-    }
-
-    // Generate unique filename
-    const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-    const fileName = `${programId}-${Date.now()}.${fileExt}`;
-    const filePath = fileName; // Store in root of bucket
-
-    console.log('📁 Upload path:', filePath);
-
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('program-images')
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: true,
-        contentType: file.type,
-      });
-
-    if (uploadError) {
-      console.error('❌ Upload error:', uploadError);
-      
-      if (uploadError.message.includes('not found') || uploadError.message.includes('does not exist')) {
-        throw new Error('Storage bucket yapılandırması eksik. Lütfen yönetici ile iletişime geçin.');
-      }
-      
-      if (uploadError.message.includes('policy')) {
-        throw new Error('Yükleme izni yok. Lütfen yönetici ile iletişime geçin.');
-      }
-      
-      throw new Error(uploadError.message || 'Resim yüklenirken bir hata oluştu');
-    }
-
-    console.log('✅ Upload successful:', uploadData);
-
-    // Get public URL safely
-    const { data: urlData } = supabase.storage
-      .from('program-images')
-      .getPublicUrl(filePath);
-
-    if (!urlData?.publicUrl) {
-      throw new Error('Public URL is empty or not available.');
-    }
-
-    console.log('🔗 Public URL:', urlData.publicUrl);
-
-    return urlData.publicUrl;
-  } catch (err) {
-    console.error('❌ Upload failed:', err);
-    throw err;
+  } catch (e) {
+    console.warn('Token read failed', e);
   }
-}
+  return null;
+};
 
-export async function addProgramFeature(
-  programId: string,
-  featureText: string,
-  featureType: 'feature' | 'outcome',
-  sortOrder: number = 0
-) {
-  const { data, error } = await supabase
-    .from('program_features')
-    .insert([{
-      program_id: programId,
-      feature_text: featureText,
-      feature_type: featureType,
-      sort_order: sortOrder,
-    }])
-    .select()
-    .single();
+// Helper for write operations via REST (more reliable in this env)
+const performWrite = async (method: 'POST' | 'PATCH' | 'DELETE', endpoint: string, body?: any) => {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const token = getAccessToken();
 
-  if (error) throw error;
-  return data;
-}
+  if (!token) throw new Error('Oturum bulunamadı');
 
-export async function addProgramFAQ(
-  programId: string,
-  question: string,
-  answer: string,
-  sortOrder: number = 0
-) {
-  const { data, error } = await supabase
-    .from('program_faqs')
-    .insert([{
-      program_id: programId,
-      question,
-      answer,
-      sort_order: sortOrder,
-    }])
-    .select()
-    .single();
+  const response = await fetch(`${supabaseUrl}/rest/v1/${endpoint}`, {
+    method,
+    headers: {
+      'apikey': supabaseKey,
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
 
-  if (error) throw error;
-  return data;
-}
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`İşlem başarısız: ${text}`);
+  }
+
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+};
+
+export const createProgram = async (program: Omit<Program, 'id' | 'created_at'>) => {
+  const data = await performWrite('POST', 'programs', program);
+  return Array.isArray(data) ? data[0] : data;
+};
+
+export const updateProgram = async (id: string | number, updates: Partial<Program>) => {
+  const data = await performWrite('PATCH', `programs?id=eq.${id}`, updates);
+  return Array.isArray(data) ? data[0] : data;
+};
+
+export const deleteProgram = async (id: string | number) => {
+  await performWrite('DELETE', `programs?id=eq.${id}`);
+  return true;
+};

@@ -85,8 +85,9 @@ const AdminOrders: React.FC = () => {
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
-  const { session } = useAuthStore(); // ✅ Session'dan access_token al
+  const { session } = useAuthStore();
 
   useEffect(() => {
     fetchOrders();
@@ -112,7 +113,7 @@ const AdminOrders: React.FC = () => {
           method: 'GET',
           headers: {
             'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${session.access_token}`, // ✅ Session'dan token
+            'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
         }
@@ -183,6 +184,8 @@ const AdminOrders: React.FC = () => {
     console.log(`🔵 [AdminOrders] Deleting order ${orderId}`);
     
     try {
+      setIsDeleting(true);
+      
       if (!session?.access_token) {
         toast.error('Oturum bilgisi bulunamadı');
         return;
@@ -196,6 +199,7 @@ const AdminOrders: React.FC = () => {
             'apikey': SUPABASE_ANON_KEY,
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
+            'Prefer': 'return=minimal',
           },
         }
       );
@@ -203,16 +207,19 @@ const AdminOrders: React.FC = () => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ [AdminOrders] Delete failed:', response.status, errorText);
-        throw new Error(`HTTP ${response.status}`);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      console.log('✅ [AdminOrders] Order deleted successfully');
+      console.log('✅ [AdminOrders] Order deleted successfully from database');
       
+      // State'i güncelle
       setOrders(orders.filter(o => o.id !== orderId));
-      toast.success('Sipariş silindi');
+      toast.success('Sipariş başarıyla silindi');
     } catch (error: any) {
       console.error('❌ [AdminOrders] Delete error:', error);
-      toast.error('Sipariş silinirken hata oluştu');
+      toast.error('Sipariş silinirken hata oluştu: ' + error.message);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -475,21 +482,34 @@ const AdminOrders: React.FC = () => {
                   {/* Delete Button */}
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950">
-                        <Trash2 className="h-4 w-4" />
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                        disabled={isDeleting}
+                      >
+                        {isDeleting ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>Siparişi Sil</AlertDialogTitle>
                         <AlertDialogDescription>
-                          Bu siparişi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
+                          Bu siparişi silmek istediğinize emin misiniz? Bu işlem geri alınamaz ve sipariş veritabanından kalıcı olarak silinecektir.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>Vazgeç</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => deleteOrder(order.id)} className="bg-red-500 hover:bg-red-600">
-                          Sil
+                        <AlertDialogAction 
+                          onClick={() => deleteOrder(order.id)} 
+                          className="bg-red-500 hover:bg-red-600"
+                          disabled={isDeleting}
+                        >
+                          {isDeleting ? 'Siliniyor...' : 'Sil'}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>

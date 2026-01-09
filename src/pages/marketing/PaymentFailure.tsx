@@ -42,7 +42,7 @@ const PaymentFailure: React.FC = () => {
       }
 
       const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
-      console.log(`⏳ Retry attempt ${attempt + 1}/${MAX_RETRIES} after ${delay}ms...`);
+
       
       await new Promise(resolve => setTimeout(resolve, delay));
       
@@ -52,19 +52,14 @@ const PaymentFailure: React.FC = () => {
 
   // ✅ NEW: Process failure with retry support
   const processFailure = async (isManualRetry: boolean = false) => {
-    console.log('🔴 PaymentFailure: Processing payment failure callback');
-    console.log('🔴 Order ID from URL:', orderId);
-    console.log('🔄 Is manual retry:', isManualRetry);
 
     // ✅ CRITICAL: Prevent multiple simultaneous executions
     if (processingRef.current) {
-      console.log('⚠️ Already processing, skipping duplicate request');
       return;
     }
 
     // ✅ CRITICAL: Validate orderId
     if (!orderId) {
-      console.error('❌ No orderId provided');
       setError('Sipariş numarası bulunamadı');
       setIsLoading(false);
       setIsRetrying(false);
@@ -79,7 +74,7 @@ const PaymentFailure: React.FC = () => {
 
     try {
       // ✅ STEP 1: Fetch order details with retry
-      console.log('🔍 Fetching order details...');
+
       
       const order = await retryWithBackoff(async () => {
         const { data, error: fetchError } = await supabase
@@ -90,21 +85,17 @@ const PaymentFailure: React.FC = () => {
           .single();
 
         if (fetchError) {
-          console.error('❌ Error fetching order:', fetchError);
           throw new Error('Sipariş bulunamadı');
         }
 
         if (!data) {
-          console.error('❌ Order not found');
           throw new Error('Sipariş bulunamadı');
         }
 
         return data;
       });
 
-      console.log('✅ Order found:', order.order_number);
-      console.log('📊 Current status:', order.status);
-      console.log('💳 Payment status:', order.payment_status);
+
 
       // ✅ STEP 2: Set order details first (for display)
       setOrderDetails({
@@ -115,7 +106,7 @@ const PaymentFailure: React.FC = () => {
 
       // ✅ STEP 3: Update order status to failed (only if not already completed)
       if (order.payment_status !== 'completed' && order.status !== 'completed') {
-        console.log('🔄 Updating order status to failed...');
+
         
         await retryWithBackoff(async () => {
           const { data: updatedOrder, error: updateError } = await supabase
@@ -133,7 +124,6 @@ const PaymentFailure: React.FC = () => {
           if (updateError) {
             // ✅ Check if it's a concurrent update conflict
             if (updateError.code === 'PGRST116') {
-              console.warn('⚠️ Concurrent update detected - checking current status...');
               
               // ✅ Re-fetch to get current status
               const { data: currentOrder } = await supabase
@@ -143,12 +133,10 @@ const PaymentFailure: React.FC = () => {
                 .single();
 
               if (currentOrder?.payment_status === 'completed' || currentOrder?.status === 'completed') {
-                console.log('⚠️ Order was completed by another request - not updating to failed');
                 return currentOrder;
               }
               
               if (currentOrder?.status === 'failed') {
-                console.log('✅ Order already marked as failed by another request');
                 return currentOrder;
               }
             }
@@ -157,15 +145,12 @@ const PaymentFailure: React.FC = () => {
           }
 
           if (updatedOrder) {
-            console.log('✅ Order status updated to failed');
-            console.log('📊 New status:', updatedOrder.status);
-            console.log('💳 New payment status:', updatedOrder.payment_status);
           }
 
           return updatedOrder;
         });
       } else {
-        console.log('⚠️ Order already completed or failed, not updating');
+
       }
 
       toast.error('Ödeme işlemi başarısız oldu');
@@ -180,11 +165,10 @@ const PaymentFailure: React.FC = () => {
     } catch (err: any) {
       // ✅ Ignore abort errors (component unmounted)
       if (err.name === 'AbortError') {
-        console.log('⚠️ Request aborted (component unmounted)');
+
         return;
       }
 
-      console.error('❌ Error processing failure:', err);
       const errorMessage = err instanceof Error ? err.message : 'Bir hata oluştu';
       setError(errorMessage);
       
@@ -207,7 +191,7 @@ const PaymentFailure: React.FC = () => {
     // ✅ CRITICAL: Cleanup on unmount
     return () => {
       if (abortControllerRef.current) {
-        console.log('🧹 Aborting pending requests...');
+
         abortControllerRef.current.abort();
       }
       processingRef.current = false;
@@ -217,7 +201,6 @@ const PaymentFailure: React.FC = () => {
   // ✅ NEW: Manual retry handler
   const handleRetry = async () => {
     if (isRetrying || isLoading) {
-      console.log('⚠️ Already retrying or loading');
       return;
     }
 
@@ -226,7 +209,6 @@ const PaymentFailure: React.FC = () => {
       return;
     }
 
-    console.log('🔄 Manual retry initiated');
     setIsRetrying(true);
     setError(null);
     

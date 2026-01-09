@@ -108,11 +108,11 @@ const Contact: React.FC = () => {
     // --- NORMAL AKIŞ ---
 
     setIsSubmitting(true);
-    console.log('🚀 Form submission started...');
+
 
     try {
       // 1. ÖNCE VERİTABANINA KAYDET (Direct REST API ile)
-      console.log('💾 Step 1: Saving to Supabase DB (via REST API)...');
+
       
       const insertPayload = {
         name: formData.name,
@@ -157,10 +157,10 @@ const Contact: React.FC = () => {
         throw new Error('No submission ID returned');
       }
 
-      console.log('✅ Saved to Supabase successfully. ID:', submission.id);
+
 
       // 2. SENDPULSE'A GÖNDER (Edge Function Invoke)
-      console.log('📧 Step 2: Invoking SendPulse Edge Function...');
+
       
       try {
         await sendContactEvent({
@@ -170,7 +170,7 @@ const Contact: React.FC = () => {
           subject: formData.subject,
           message: formData.message
         }, submission.id);
-        console.log('✅ SendPulse process completed.');
+
       } catch (spError) {
         console.warn('⚠️ SendPulse failed but DB save was successful:', spError);
       }

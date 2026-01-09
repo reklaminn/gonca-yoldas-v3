@@ -1,5 +1,5 @@
 import React from 'react';
-import { Outlet, Link, useLocation, Navigate } from 'react-router-dom';
+import { Outlet, Link, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
 import { 
@@ -17,10 +17,12 @@ import {
   Mail
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { toast } from 'sonner';
 
 const AdminLayout: React.FC = () => {
-  const { user, profile } = useAuthStore();
+  const { user, profile, reset } = useAuthStore();
   const location = useLocation();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
   const isAdmin = profile?.role === 'admin';
@@ -36,11 +38,45 @@ const AdminLayout: React.FC = () => {
     { name: 'Ayarlar', href: '/admin/settings', icon: Settings },
   ];
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    window.location.href = '/';
+  const handleSignOut = async (e?: React.MouseEvent) => {
+    // Tıklama olayının yayılmasını engelle (Event Bubbling)
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    console.log('🔴 [AdminLayout] Çıkış işlemi başlatıldı');
+    
+    try {
+      toast.info('Çıkış yapılıyor...');
+
+      // 1. Önce LocalStorage'ı manuel temizle (En garanti yöntem)
+      try {
+        localStorage.removeItem('auth-storage');
+        localStorage.removeItem('sb-jlwsapdvizzriomadhxj-auth-token');
+      } catch (err) {
+        console.error('LocalStorage temizleme hatası:', err);
+      }
+
+      // 2. Store'u sıfırla
+      reset();
+
+      // 3. Supabase oturumunu kapat (Beklemeden devam et - Fire and Forget)
+      // Eğer internet yavaşsa veya Supabase yanıt vermezse kullanıcıyı bekletmeyelim
+      supabase.auth.signOut().catch(err => console.error('Supabase çıkış hatası:', err));
+
+      // 4. Sayfayı tamamen yenileyerek giriş sayfasına git
+      // Bu işlem bellekteki tüm state'leri temizler
+      window.location.href = '/auth/login';
+      
+    } catch (error) {
+      console.error('Kritik çıkış hatası:', error);
+      // Hata durumunda bile zorla yönlendir
+      window.location.href = '/auth/login';
+    }
   };
 
+  // Güvenlik kontrolleri
   if (!user) return <Navigate to="/auth/login" replace />;
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
 
@@ -91,10 +127,15 @@ const AdminLayout: React.FC = () => {
                 <p className="text-xs text-gray-400">Admin</p>
               </div>
             </div>
-            <Button variant="ghost" className="w-full justify-start gap-3 text-gray-300 hover:text-white hover:bg-gray-800" onClick={handleSignOut}>
-              <LogOut className="h-5 w-5" />
+            
+            {/* Çıkış Butonu - Doğrudan onClick event'i ile */}
+            <button 
+              onClick={(e) => handleSignOut(e)}
+              className="w-full flex items-center gap-3 px-4 py-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-800 transition-colors group"
+            >
+              <LogOut className="h-5 w-5 group-hover:text-red-400 transition-colors" />
               <span className="font-medium">Çıkış Yap</span>
-            </Button>
+            </button>
           </div>
         </div>
       </aside>

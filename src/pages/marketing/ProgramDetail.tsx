@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Clock,
   Users,
@@ -42,7 +43,9 @@ import {
   Phone,
   Mail,
   Hourglass,
-  Ban
+  Ban,
+  Gift,
+  Plus
 } from 'lucide-react';
 
 const ProgramDetail: React.FC = () => {
@@ -52,6 +55,9 @@ const ProgramDetail: React.FC = () => {
   const { testimonials, loading: testimonialsLoading } = useTestimonials(true);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [selectedDateId, setSelectedDateId] = useState<string>("");
+  
+  // Upsell State
+  const [selectedUpsellIds, setSelectedUpsellIds] = useState<string[]>([]);
 
   // --- Hero Animation Logic ---
   const x = useMotionValue(0);
@@ -90,6 +96,7 @@ const ProgramDetail: React.FC = () => {
   const installments = metadata.installments || [];
   const pricingOptions = metadata.pricing_options || [];
   const programDates = metadata.program_dates || [];
+  const upsells = metadata.upsells || []; // Upsell verilerini al
 
   // Set default selected option if pricing options exist
   useEffect(() => {
@@ -168,11 +175,27 @@ const ProgramDetail: React.FC = () => {
   const currentPrice = selectedOption ? selectedOption.price : program.price;
   const currentTitle = selectedOption ? selectedOption.title : program.title;
 
+  // Calculate total price including upsells
+  const upsellTotal = upsells
+    .filter((u: any) => selectedUpsellIds.includes(u.id))
+    .reduce((sum: number, u: any) => sum + (Number(u.discounted_price) || 0), 0);
+  
+  const finalTotalPrice = currentPrice + upsellTotal;
+
   const handleEnrollClick = () => {
     let checkoutUrl = `/siparis?program=${program.slug}`;
     if (selectedOptionId) checkoutUrl += `&option=${selectedOptionId}`;
     if (selectedDateId) checkoutUrl += `&date=${selectedDateId}`;
+    if (selectedUpsellIds.length > 0) checkoutUrl += `&upsell_ids=${selectedUpsellIds.join(',')}`;
     navigate(checkoutUrl);
+  };
+
+  const toggleUpsell = (upsellId: string) => {
+    setSelectedUpsellIds(prev => 
+      prev.includes(upsellId) 
+        ? prev.filter(id => id !== upsellId)
+        : [...prev, upsellId]
+    );
   };
 
   // Helper to render date status badge
@@ -477,7 +500,7 @@ const ProgramDetail: React.FC = () => {
                       >
                         <h3 className="font-semibold text-[var(--fg)] mb-2">{faq.question}</h3>
                         <p className="text-[var(--fg-muted)]">{faq.answer}</p>
-                        {index < program.faqs.length - 1 && (
+                        {index < (program.faqs?.length || 0) - 1 && (
                           <Separator className="mt-6 bg-[var(--border)]" />
                         )}
                       </motion.div>
@@ -647,6 +670,61 @@ const ProgramDetail: React.FC = () => {
                       ₺{program.price.toLocaleString()}
                     </div>
                     <div className="text-[var(--fg-muted)]">{program.duration}</div>
+                  </div>
+                )}
+
+                {/* Upsell Section (NEW) */}
+                {upsells.length > 0 && (
+                  <div className="mb-6">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Gift className="h-4 w-4 text-pink-500" />
+                      <span className="font-semibold text-[var(--fg)]">Fırsatları Değerlendir</span>
+                    </div>
+                    <div className="space-y-3">
+                      {upsells.map((upsell: any) => {
+                        const isSelected = selectedUpsellIds.includes(upsell.id);
+                        return (
+                          <div
+                            key={upsell.id}
+                            onClick={() => toggleUpsell(upsell.id)}
+                            className={`
+                              relative p-3 rounded-lg border cursor-pointer transition-all duration-200 flex items-start gap-3
+                              ${isSelected 
+                                ? 'border-pink-400 bg-pink-50 dark:bg-pink-900/10' 
+                                : 'border-[var(--border)] hover:border-pink-300'}
+                            `}
+                          >
+                            <div className={`
+                              mt-1 w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 transition-colors
+                              ${isSelected ? 'bg-pink-500 border-pink-500' : 'border-gray-300 bg-white'}
+                            `}>
+                              {isSelected && <Check className="h-3 w-3 text-white" />}
+                            </div>
+                            <div className="flex-1">
+                              <div className="font-medium text-sm text-[var(--fg)]">{upsell.title}</div>
+                              <div className="text-xs text-[var(--fg-muted)] mt-0.5 mb-1">{upsell.description}</div>
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-bold text-pink-600">₺{upsell.discounted_price.toLocaleString()}</span>
+                                {/* Orijinal fiyatı göstermek için target_program_id ile fetch yapmak gerekir ama şimdilik sadece indirimliyi gösterelim */}
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-pink-200 text-pink-600 bg-pink-50">
+                                  Fırsat
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Total Price Summary if Upsells Selected */}
+                    {selectedUpsellIds.length > 0 && (
+                      <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg flex justify-between items-center border border-[var(--border)]">
+                        <span className="text-sm font-medium text-[var(--fg-muted)]">Toplam Tutar:</span>
+                        <span className="text-lg font-bold text-[var(--color-primary)]">₺{finalTotalPrice.toLocaleString()}</span>
+                      </div>
+                    )}
+                    
+                    <Separator className="my-6 bg-[var(--border)]" />
                   </div>
                 )}
 

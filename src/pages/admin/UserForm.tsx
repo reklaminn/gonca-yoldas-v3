@@ -23,15 +23,18 @@ import {
   Phone,
   User,
   Shield,
+  Lock,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabaseClient';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 interface UserFormData {
   email: string;
+  password: string;
   full_name: string;
   phone?: string;
   role: 'student' | 'instructor' | 'admin';
@@ -62,18 +65,18 @@ const UserForm: React.FC = () => {
   } = useForm<UserFormData>({
     defaultValues: {
       email: '',
+      password: '',
       full_name: '',
       phone: '',
       role: 'student',
     },
   });
 
-  // Load existing user data in edit mode
   useEffect(() => {
     console.log('📝 [UserForm] useEffect triggered, isEditMode:', isEditMode, 'id:', id);
     
     if (!isEditMode || !id) {
-      console.log('ℹ️ [UserForm] Not edit mode or no ID, skipping load');
+      console.log('ℹ️ [UserForm] Create mode, no data to load');
       setInitialLoading(false);
       return;
     }
@@ -102,32 +105,27 @@ const UserForm: React.FC = () => {
         );
 
         if (!response.ok) {
-          const errorText = await response.text();
-          console.error('❌ [UserForm] Fetch failed:', response.status, errorText);
-          throw new Error(`HTTP ${response.status}: ${errorText}`);
+          throw new Error(`HTTP ${response.status}`);
         }
 
         const data = await response.json();
         const user = data[0];
 
         if (!user) {
-          console.error('❌ [UserForm] User not found');
           throw new Error('Kullanıcı bulunamadı');
         }
 
         console.log('✅ [UserForm] User loaded:', user.email);
 
-        // Reset form with user data
         reset({
           email: user.email,
+          password: '', // Never load password
           full_name: user.full_name || '',
           phone: user.phone || '',
           role: user.role || 'student',
         });
-
-        console.log('✅ [UserForm] Form data loaded successfully');
       } catch (err: any) {
-        console.error('❌ [UserForm] Error loading user:', err);
+        console.error('❌ [UserForm] Load error:', err);
         showNotification('error', 'Kullanıcı yüklenirken hata: ' + err.message);
       } finally {
         setInitialLoading(false);
@@ -143,10 +141,9 @@ const UserForm: React.FC = () => {
   };
 
   const onSubmit = async (data: UserFormData) => {
-    console.log('💾 [UserForm] Saving user...', data);
+    console.log('💾 [UserForm] Submitting...', { isEditMode, data: { ...data, password: '***' } });
     
     if (!session?.access_token) {
-      console.error('❌ [UserForm] No access token');
       toast.error('Oturum bilgisi bulunamadı');
       return;
     }
@@ -154,19 +151,18 @@ const UserForm: React.FC = () => {
     try {
       setLoading(true);
 
-      // Prepare user data
-      const userData = {
-        full_name: data.full_name,
-        phone: data.phone || null,
-        role: data.role,
-        updated_at: new Date().toISOString(),
-      };
-
-      console.log('📤 [UserForm] Sending update:', userData);
-
       if (isEditMode && id) {
-        // Update existing user
-        const updateResponse = await fetch(
+        // UPDATE existing user
+        console.log('📝 [UserForm] Updating user:', id);
+        
+        const updateData = {
+          full_name: data.full_name,
+          phone: data.phone || null,
+          role: data.role,
+          updated_at: new Date().toISOString(),
+        };
+
+        const response = await fetch(
           `${SUPABASE_URL}/rest/v1/profiles?id=eq.${id}`,
           {
             method: 'PATCH',
@@ -176,34 +172,75 @@ const UserForm: React.FC = () => {
               'Content-Type': 'application/json',
               'Prefer': 'return=representation',
             },
-            body: JSON.stringify(userData),
+            body: JSON.stringify(updateData),
           }
         );
 
-        if (!updateResponse.ok) {
-          const errorText = await updateResponse.text();
-          console.error('❌ [UserForm] Update failed:', updateResponse.status, errorText);
+        if (!response.ok) {
           throw new Error('Kullanıcı güncellenemedi');
         }
 
-        const updatedUser = await updateResponse.json();
-        console.log('✅ [UserForm] User updated:', updatedUser);
-
+        console.log('✅ [UserForm] User updated');
         showNotification('success', 'Kullanıcı başarıyla güncellendi');
+        
+        setTimeout(() => navigate('/admin/students'), 1500);
       } else {
-        // Create new user - Note: This requires auth.users table access
-        // For now, we'll show an error as user creation should be done via Supabase Auth
-        showNotification('error', 'Yeni kullanıcı oluşturma henüz desteklenmiyor. Lütfen Supabase Auth kullanın.');
-        setLoading(false);
-        return;
-      }
+        // CREATE new user
+        console.log('➕ [UserForm] Creating new user...');
 
-      setTimeout(() => {
-        navigate('/admin/users');
-      }, 1500);
+        if (!data.password || data.password.length < 6) {
+          toast.error('Şifre en az 6 karakter olmalıdır');
+          setLoading(false);
+          return;
+        }
+
+        // Use Supabase Auth to create user
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: data.email,
+          password: data.password,
+          options: {
+            data: {
+              full_name: data.full_name,
+              phone: data.phone || null,
+            },
+          },
+        });
+
+        if (authError) {
+          console.error('❌ [UserForm] Auth error:', authError);
+          throw new Error(authError.message);
+        }
+
+        if (!authData.user) {
+          throw new Error('Kullanıcı oluşturulamadı');
+        }
+
+        console.log('✅ [UserForm] User created:', authData.user.id);
+
+        // Update profile with role
+        const profileResponse = await fetch(
+          `${SUPABASE_URL}/rest/v1/profiles?id=eq.${authData.user.id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ role: data.role }),
+          }
+        );
+
+        if (!profileResponse.ok) {
+          console.warn('⚠️ [UserForm] Could not update role');
+        }
+
+        showNotification('success', 'Kullanıcı başarıyla oluşturuldu!');
+        setTimeout(() => navigate('/admin/students'), 1500);
+      }
     } catch (err: any) {
-      console.error('❌ [UserForm] Save error:', err);
-      showNotification('error', err.message || 'Kullanıcı kaydedilirken bir hata oluştu');
+      console.error('❌ [UserForm] Submit error:', err);
+      showNotification('error', err.message || 'Bir hata oluştu');
     } finally {
       setLoading(false);
     }
@@ -211,13 +248,10 @@ const UserForm: React.FC = () => {
 
   const handleCancel = () => {
     if (window.confirm('Değişiklikler kaydedilmeyecek. Devam etmek istiyor musunuz?')) {
-      navigate('/admin/users');
+      navigate('/admin/students');
     }
   };
 
-  console.log('📝 [UserForm] Rendering, initialLoading:', initialLoading, 'loading:', loading);
-
-  // Show loading spinner while fetching data in edit mode
   if (initialLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -231,10 +265,9 @@ const UserForm: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={() => navigate('/admin/users')}>
+          <Button variant="ghost" onClick={() => navigate('/admin/students')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Geri
           </Button>
@@ -243,15 +276,12 @@ const UserForm: React.FC = () => {
               {isEditMode ? 'Kullanıcı Düzenle' : 'Yeni Kullanıcı'}
             </h1>
             <p className="text-gray-600 dark:text-gray-400 mt-1">
-              {isEditMode
-                ? 'Mevcut kullanıcıyı düzenleyin'
-                : 'Yeni bir kullanıcı oluşturun'}
+              {isEditMode ? 'Mevcut kullanıcıyı düzenleyin' : 'Yeni bir kullanıcı oluşturun'}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Notification */}
       {notification && (
         <div
           className={`p-4 rounded-lg flex items-center gap-3 ${
@@ -266,17 +296,13 @@ const UserForm: React.FC = () => {
             <AlertCircle className="h-5 w-5" />
           )}
           <span>{notification.message}</span>
-          <button
-            onClick={() => setNotification(null)}
-            className="ml-auto hover:opacity-70"
-          >
+          <button onClick={() => setNotification(null)} className="ml-auto hover:opacity-70">
             <X className="h-4 w-4" />
           </button>
         </div>
       )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        {/* Basic Information */}
         <Card>
           <CardHeader>
             <CardTitle>Temel Bilgiler</CardTitle>
@@ -311,6 +337,30 @@ const UserForm: React.FC = () => {
                 <p className="text-sm text-red-500">{errors.email.message}</p>
               )}
             </div>
+
+            {!isEditMode && (
+              <div className="space-y-2">
+                <Label htmlFor="password" className="flex items-center gap-2">
+                  <Lock className="h-4 w-4 text-blue-600" />
+                  Şifre <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="password"
+                  type="password"
+                  {...register('password', { 
+                    required: !isEditMode ? 'Bu alan zorunludur' : false,
+                    minLength: {
+                      value: 6,
+                      message: 'Şifre en az 6 karakter olmalıdır'
+                    }
+                  })}
+                  placeholder="En az 6 karakter"
+                />
+                {errors.password && (
+                  <p className="text-sm text-red-500">{errors.password.message}</p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="full_name" className="flex items-center gap-2">
@@ -365,40 +415,19 @@ const UserForm: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Info Card */}
-        {!isEditMode && (
-          <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950">
-            <CardContent className="pt-6">
-              <div className="flex gap-3">
-                <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                <div className="space-y-2">
-                  <p className="text-sm text-blue-800 dark:text-blue-200 font-medium">
-                    Yeni Kullanıcı Oluşturma
-                  </p>
-                  <p className="text-sm text-blue-700 dark:text-blue-300">
-                    Yeni kullanıcılar şu anda Supabase Auth üzerinden oluşturulmalıdır. 
-                    Bu form sadece mevcut kullanıcıları düzenlemek için kullanılabilir.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Actions */}
         <div className="flex gap-4 justify-end">
           <Button type="button" variant="outline" onClick={handleCancel}>
             İptal
           </Button>
           <Button
             type="submit"
-            disabled={loading || !isEditMode}
+            disabled={loading}
             className="bg-blue-600 hover:bg-blue-700"
           >
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Kaydediliyor...
+                {isEditMode ? 'Güncelleniyor...' : 'Oluşturuluyor...'}
               </>
             ) : (
               <>

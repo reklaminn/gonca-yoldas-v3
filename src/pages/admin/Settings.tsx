@@ -31,12 +31,15 @@ import {
   Link as LinkIcon,
   DollarSign,
   Phone,
-  MapPin
+  MapPin,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   getAllPaymentMethods,
   updatePaymentMethod,
+  updatePaymentMethodsOrder,
   type PaymentMethod,
   type CreditCardConfig,
   type BankTransferConfig,
@@ -54,6 +57,7 @@ const SettingsPage: React.FC = () => {
   const [generalSettings, setGeneralSettings] = useState<GeneralSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isOrderChanged, setIsOrderChanged] = useState(false);
 
   // General Settings State
   const [siteName, setSiteName] = useState('');
@@ -61,8 +65,8 @@ const SettingsPage: React.FC = () => {
   const [siteDescription, setSiteDescription] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [supportEmail, setSupportEmail] = useState('');
-  const [phone, setPhone] = useState(''); // Yeni
-  const [address, setAddress] = useState(''); // Yeni
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
   const [timezone, setTimezone] = useState('');
   const [language, setLanguage] = useState('');
   const [maintenanceMode, setMaintenanceMode] = useState(false);
@@ -132,7 +136,6 @@ const SettingsPage: React.FC = () => {
 
       // Load general settings
       const settings = await getGeneralSettings();
-      console.log('📊 General settings loaded:', settings);
       
       if (settings) {
         setGeneralSettings(settings);
@@ -141,8 +144,8 @@ const SettingsPage: React.FC = () => {
         setSiteDescription(settings.site_description);
         setContactEmail(settings.contact_email);
         setSupportEmail(settings.support_email);
-        setPhone(settings.phone || ''); // Yeni
-        setAddress(settings.address || ''); // Yeni
+        setPhone(settings.phone || '');
+        setAddress(settings.address || '');
         setTimezone(settings.timezone);
         setLanguage(settings.language);
         setMaintenanceMode(settings.maintenance_mode_active);
@@ -167,16 +170,14 @@ const SettingsPage: React.FC = () => {
 
     setIsSaving(true);
     try {
-      console.log('💾 Saving general settings...');
-      
       const success = await updateGeneralSettings(generalSettings.id, {
         site_name: siteName,
         site_url: siteUrl,
         site_description: siteDescription,
         contact_email: contactEmail,
         support_email: supportEmail,
-        phone, // Yeni
-        address, // Yeni
+        phone,
+        address,
         timezone,
         language,
         maintenance_mode_active: maintenanceMode,
@@ -204,8 +205,6 @@ const SettingsPage: React.FC = () => {
 
     setIsSaving(true);
     try {
-      console.log('💾 Saving checkout settings...');
-      
       const success = await updateGeneralSettings(generalSettings.id, {
         invoice_enabled: invoiceEnabled,
         show_prices_with_vat: showPricesWithVAT,
@@ -259,7 +258,6 @@ const SettingsPage: React.FC = () => {
       return;
     }
 
-    // Validate IBAN if bank transfer is active
     if (bankTransferActive && !iban.trim()) {
       toast.error('IBAN numarası gereklidir');
       return;
@@ -314,6 +312,66 @@ const SettingsPage: React.FC = () => {
       console.error('Error saving iyzilink settings:', error);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // --- Payment Method Sorting Logic ---
+
+  const movePaymentMethod = (index: number, direction: 'up' | 'down') => {
+    const newMethods = [...paymentMethods];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+
+    if (targetIndex < 0 || targetIndex >= newMethods.length) return;
+
+    // Swap items
+    const temp = newMethods[index];
+    newMethods[index] = newMethods[targetIndex];
+    newMethods[targetIndex] = temp;
+    
+    setPaymentMethods(newMethods);
+    setIsOrderChanged(true);
+  };
+
+  const handleSaveOrder = async () => {
+    setIsSaving(true);
+    try {
+      // Prepare items with new display_order AND all required fields to satisfy NOT NULL constraints
+      const updates = paymentMethods.map((method, index) => ({
+        id: method.id,
+        payment_method: method.payment_method, // REQUIRED for upsert
+        is_active: method.is_active,
+        config: method.config,
+        display_order: index + 1
+      }));
+
+      const success = await updatePaymentMethodsOrder(updates);
+      
+      if (success) {
+        setIsOrderChanged(false);
+        await loadAllSettings(); // Reload to ensure sync
+      }
+    } catch (error) {
+      console.error('Error saving order:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const getPaymentMethodLabel = (method: string) => {
+    switch (method) {
+      case 'credit_card': return 'Kredi Kartı (iyzico)';
+      case 'bank_transfer': return 'Havale / EFT';
+      case 'iyzilink': return 'İyzilink';
+      default: return method;
+    }
+  };
+
+  const getPaymentMethodIcon = (method: string) => {
+    switch (method) {
+      case 'credit_card': return CreditCard;
+      case 'bank_transfer': return Building2;
+      case 'iyzilink': return LinkIcon;
+      default: return CreditCard;
     }
   };
 
@@ -452,7 +510,6 @@ const SettingsPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Yeni Eklenen İletişim Alanları */}
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="phone" className="text-gray-900 dark:text-white flex items-center gap-2">
@@ -1260,46 +1317,65 @@ const SettingsPage: React.FC = () => {
               </CardContent>
             </Card>
 
-            {/* Payment Summary */}
+            {/* Payment Summary & Sorting */}
             <Card className="border-gray-200 dark:border-gray-700">
               <CardHeader>
-                <CardTitle className="text-gray-900 dark:text-white">Ödeme Yöntemleri Özeti</CardTitle>
-                <CardDescription className="text-gray-600 dark:text-gray-400">Aktif ödeme yöntemlerinin durumu</CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-gray-900 dark:text-white">Ödeme Yöntemleri Sıralaması</CardTitle>
+                    <CardDescription className="text-gray-600 dark:text-gray-400">Ödeme sayfasında görünecek sırayı düzenleyin</CardDescription>
+                  </div>
+                  {isOrderChanged && (
+                    <Button onClick={handleSaveOrder} disabled={isSaving} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                      Sıralamayı Kaydet
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <CreditCard className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white">Kredi Kartı</p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">iyzico entegrasyonu</p>
+                  {paymentMethods.map((method, index) => {
+                    const Icon = getPaymentMethodIcon(method.payment_method);
+                    return (
+                      <div key={method.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 transition-all hover:shadow-sm">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-white dark:bg-gray-700 rounded-lg flex items-center justify-center border border-gray-200 dark:border-gray-600">
+                            <Icon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900 dark:text-white">
+                              {getPaymentMethodLabel(method.payment_method)}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              {getStatusBadge(method.is_active ? 'connected' : 'disconnected')}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => movePaymentMethod(index, 'up')}
+                            disabled={index === 0}
+                            className="h-8 w-8 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                          >
+                            <ArrowUp className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => movePaymentMethod(index, 'down')}
+                            disabled={index === paymentMethods.length - 1}
+                            className="h-8 w-8 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                          >
+                            <ArrowDown className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                    {getStatusBadge(creditCardActive ? 'connected' : 'disconnected')}
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <Building2 className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white">Havale / EFT</p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">Banka transferi</p>
-                      </div>
-                    </div>
-                    {getStatusBadge(bankTransferActive ? 'connected' : 'disconnected')}
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <LinkIcon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white">İyzilink</p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">Güvenli ödeme linki</p>
-                      </div>
-                    </div>
-                    {getStatusBadge(iyziLinkActive ? 'connected' : 'disconnected')}
-                  </div>
+                    );
+                  })}
                 </div>
 
                 {!creditCardActive && !bankTransferActive && !iyziLinkActive && (

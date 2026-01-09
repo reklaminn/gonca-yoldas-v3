@@ -6,6 +6,7 @@ export interface PaymentMethod {
   id: string;
   payment_method: 'credit_card' | 'bank_transfer' | 'iyzilink';
   is_active: boolean;
+  display_order: number;
   config: CreditCardConfig | BankTransferConfig | IyzilinkConfig;
   created_at: string;
   updated_at: string;
@@ -125,7 +126,8 @@ export async function getAllPaymentMethods(retryCount = 0): Promise<PaymentMetho
     }
 
     const authHeader = accessToken ? `Bearer ${accessToken}` : `Bearer ${supabaseKey}`;
-    const url = `${supabaseUrl}/rest/v1/payment_settings?order=payment_method.asc`;
+    // display_order'a göre sırala
+    const url = `${supabaseUrl}/rest/v1/payment_settings?order=display_order.asc`;
     
     const response = await fetch(url, {
       method: 'GET',
@@ -144,7 +146,6 @@ export async function getAllPaymentMethods(retryCount = 0): Promise<PaymentMetho
         return getAllPaymentMethods(retryCount + 1);
       } catch (refreshError) {
         console.error('❌ [PaymentSettings] Retry failed:', refreshError);
-        // Retry başarısız olsa bile hatayı fırlatmayıp boş dizi dönelim ki sayfa çökmesin
         toast.error('Oturum süreniz doldu. Lütfen sayfayı yenileyin.');
         return [];
       }
@@ -169,7 +170,6 @@ export async function getAllPaymentMethods(retryCount = 0): Promise<PaymentMetho
 
 /**
  * Get active payment methods (public - for checkout page)
- * Usually public, so uses Anon Key mostly, but we'll keep it safe.
  */
 export async function getActivePaymentMethods(): Promise<PaymentMethod[]> {
   try {
@@ -178,13 +178,14 @@ export async function getActivePaymentMethods(): Promise<PaymentMethod[]> {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-    const url = `${supabaseUrl}/rest/v1/payment_settings?is_active=eq.true&order=payment_method.asc`;
+    // display_order'a göre sırala
+    const url = `${supabaseUrl}/rest/v1/payment_settings?is_active=eq.true&order=display_order.asc`;
     
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`, // Public read usually allows anon
+        'Authorization': `Bearer ${supabaseKey}`,
         'Content-Type': 'application/json',
       }
     });
@@ -204,7 +205,7 @@ export async function getActivePaymentMethods(): Promise<PaymentMethod[]> {
 }
 
 /**
- * Update payment method configuration - WITH RETRY LOGIC
+ * Update payment method configuration
  */
 export async function updatePaymentMethod(
   id: string,
@@ -222,7 +223,6 @@ export async function updatePaymentMethod(
 
     let accessToken = await getAuthTokenSafely();
     
-    // Token yoksa yenilemeyi dene
     if (!accessToken && retryCount === 0) {
       try {
         accessToken = await refreshAuthTokenManual();
@@ -245,7 +245,6 @@ export async function updatePaymentMethod(
       body: JSON.stringify(updates)
     });
 
-    // 401 Hatası ve Retry Hakkı Varsa -> Token Yenile ve Tekrar Dene
     if (response.status === 401 && retryCount < 1) {
       console.warn('⚠️ [PaymentSettings] 401 Unauthorized during update. Refreshing token...');
       try {
@@ -265,14 +264,76 @@ export async function updatePaymentMethod(
       return false;
     }
 
-    const data = await response.json();
-    console.log('✅ [PaymentSettings] Payment method updated:', data);
-    
     toast.success('Ödeme yöntemi güncellendi');
     return true;
   } catch (error: any) {
     console.error('❌ [PaymentSettings] Failed to update payment method:', error);
     toast.error(`Ödeme yöntemi güncellenemedi: ${error.message || 'Bilinmeyen hata'}`);
+    return false;
+  }
+}
+
+/**
+ * Update payment methods order
+ * IMPORTANT: Must include all required fields (like payment_method) to avoid NOT NULL constraints during upsert
+ */
+export async function updatePaymentMethodsOrder(
+  items: Partial<PaymentMethod>[],
+  retryCount = 0
+): Promise<boolean> {
+  try {
+    console.log(`🔵 [PaymentSettings] Updating payment methods order (Attempt: ${retryCount + 1})`);
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    let accessToken = await getAuthTokenSafely();
+    
+    if (!accessToken && retryCount === 0) {
+      try {
+        accessToken = await refreshAuthTokenManual();
+      } catch (e) {
+        console.warn('⚠️ [PaymentSettings] Initial refresh failed');
+      }
+    }
+    
+    const authHeader = accessToken ? `Bearer ${accessToken}` : `Bearer ${supabaseKey}`;
+    // on_conflict=id parametresi ekleyerek explicit upsert yapıyoruz
+    const url = `${supabaseUrl}/rest/v1/payment_settings?on_conflict=id`;
+    
+    // Supabase upsert kullanarak toplu güncelleme
+    const response = await fetch(url, {
+      method: 'POST', // Upsert için POST kullanılır
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates' // Çakışan ID'leri güncelle
+      },
+      body: JSON.stringify(items)
+    });
+
+    if (response.status === 401 && retryCount < 1) {
+      try {
+        await refreshAuthTokenManual();
+        return updatePaymentMethodsOrder(items, retryCount + 1);
+      } catch (refreshError) {
+        toast.error('Oturum süreniz doldu.');
+        return false;
+      }
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [PaymentSettings] Order update error:', response.status, errorText);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    toast.success('Sıralama güncellendi');
+    return true;
+  } catch (error: any) {
+    console.error('❌ [PaymentSettings] Failed to update order:', error);
+    toast.error('Sıralama güncellenemedi');
     return false;
   }
 }

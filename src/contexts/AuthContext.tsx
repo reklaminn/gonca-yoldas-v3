@@ -45,19 +45,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     const initAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const userProfile = await fetchUserProfile(session.user);
-        setUser({
-          id: session.user.id,
-          email: session.user.email ?? null,
-          role: userProfile?.role || 'user',
-          full_name: userProfile?.full_name || null,
-          avatar_url: userProfile?.avatar_url || null,
-        });
-        setProfile(userProfile);
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          if (error.name === 'AbortError' || error.message?.includes('AbortError')) {
+            console.warn('⚠️ [AuthContext] AbortError during init, ignoring.');
+            setLoading(false);
+            return;
+          }
+          throw error;
+        }
+
+        if (session?.user) {
+          const userProfile = await fetchUserProfile(session.user);
+          setUser({
+            id: session.user.id,
+            email: session.user.email ?? null,
+            role: userProfile?.role || 'user',
+            full_name: userProfile?.full_name || null,
+            avatar_url: userProfile?.avatar_url || null,
+          });
+          setProfile(userProfile);
+        }
+      } catch (err) {
+        console.error('Auth init error:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     initAuth();

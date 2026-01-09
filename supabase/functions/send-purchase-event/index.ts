@@ -1,39 +1,69 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
-// SendPulse Event API URL
-const SENDPULSE_API_URL = 'https://events.sendpulse.com/events/name/purchase';
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 serve(async (req) => {
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ success: false, message: 'Method Not Allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  // 1. Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const payload = await req.json();
-    console.log('Function received payload:', payload);
+    const SENDPULSE_URL = Deno.env.get('SENDPULSE_PURCHASE_URL');
 
-    // Payload'ı SendPulse formatına uygun hale getir
-    // Eğer client zaten doğru formatta gönderiyorsa direkt kullanabiliriz
-    // Ancak burada bir güvenlik katmanı veya veri doğrulama eklenebilir
-    
+    if (!SENDPULSE_URL) {
+      console.error('❌ Missing SENDPULSE_PURCHASE_URL environment variable');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: 'Server configuration error: Missing SendPulse URL' 
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const payload = await req.json();
+    console.log('📦 Function received payload:', JSON.stringify(payload, null, 2));
+
+    // Gelen veriyi ayrıştır (Client'tan gelen yapı: { eventData: {...}, orderId: "..." })
+    // Eğer doğrudan düz veri gelirse (eski yapı veya manuel test), onu da destekle.
+    const eventData = payload.eventData || payload;
+    const orderId = payload.orderId || eventData.order_id || '';
+
+    // Veri doğrulama
+    if (!eventData || !eventData.email) {
+      throw new Error('Invalid payload: Email is required');
+    }
+
+    // 3. Prepare SendPulse Body
+    // SendPulse değişkenleri ile Client verilerini eşleştiriyoruz
     const sendPulseBody = {
-      email: payload.email,
-      phone: payload.phone,
+      email: eventData.email,
+      phone: eventData.phone,
       event_date: new Date().toISOString().split('T')[0],
       variables: {
-        program_title: payload.variables?.program_title || '',
-        program_date: payload.variables?.program_date || '', // Tarih bilgisi
-        order_id: payload.variables?.order_id || '',
-        amount: payload.variables?.amount || 0,
-        payment_method: payload.variables?.payment_method || '',
-        full_name: payload.variables?.full_name || ''
+        program_title: eventData.product_name || eventData.variables?.program_title || '',
+        program_date: eventData.order_date || eventData.variables?.program_date || new Date().toISOString(),
+        order_id: orderId,
+        amount: eventData.amount || eventData.variables?.amount || 0,
+        payment_method: eventData.payment_method || eventData.variables?.payment_method || '',
+        full_name: eventData.name || eventData.variables?.full_name || '',
+        course_id: eventData.product_id || eventData.variables?.course_id || '',
+        upsell_course_id: eventData.upsell_course_id || eventData.variables?.upsell_course_id || ''
       }
     };
 
-    const sendPulseResponse = await fetch(SENDPULSE_API_URL, {
+    console.log('🚀 Sending to SendPulse URL:', SENDPULSE_URL);
+    console.log('📤 SendPulse Body:', JSON.stringify(sendPulseBody, null, 2));
+
+    // 4. Send Request to SendPulse
+    const response = await fetch(SENDPULSE_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -41,40 +71,35 @@ serve(async (req) => {
       body: JSON.stringify(sendPulseBody),
     });
 
-    const responseStatus = sendPulseResponse.status;
-    const responseText = await sendPulseResponse.text();
-    
-    console.log(`SendPulse API Status: ${responseStatus}`);
+    const responseText = await response.text();
+    console.log(`📡 SendPulse Response (${response.status}):`, responseText);
 
-    if (!sendPulseResponse.ok) {
-      console.error('SendPulse external API call failed:', responseStatus, responseText);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: `SendPulse API returned status ${responseStatus}`,
-          details: responseText
-        }),
-        {
-          status: 200, 
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
+    if (!response.ok) {
+      throw new Error(`SendPulse API Error: ${response.status} - ${responseText}`);
+    }
+
+    let responseData = {};
+    try {
+      responseData = JSON.parse(responseText);
+    } catch {
+      responseData = { raw: responseText };
     }
 
     return new Response(
-      JSON.stringify({ success: true, message: 'Event sent successfully', data: JSON.parse(responseText) }),
-      {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
+      JSON.stringify({ success: true, data: responseData }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200 
       }
     );
-  } catch (error) {
-    console.error('Internal function error:', error);
+
+  } catch (error: any) {
+    console.error('🔥 Internal Function Error:', error.message);
     return new Response(
-      JSON.stringify({ success: false, message: 'Internal server error processing request' }),
-      {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
+      JSON.stringify({ success: false, error: error.message }), // Client 'error' bekliyor
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500 
       }
     );
   }

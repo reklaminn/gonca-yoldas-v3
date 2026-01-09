@@ -64,7 +64,7 @@ export default function Messages() {
   const handleSendMessage = () => {
     if (messageText.trim()) {
       // Send message logic here
-      console.log('Sending message:', messageText);
+
       setMessageText('');
     }
   };

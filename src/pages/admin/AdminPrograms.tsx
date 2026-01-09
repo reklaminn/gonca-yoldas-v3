@@ -39,7 +39,8 @@ import {
   Image as ImageIcon,
   Trash2,
   AlertTriangle,
-  Settings2
+  Settings2,
+  RefreshCw
 } from 'lucide-react';
 
 const AdminPrograms: React.FC = () => {
@@ -57,7 +58,7 @@ const AdminPrograms: React.FC = () => {
   // Age Group Management State
   const [manageAgeGroupsOpen, setManageAgeGroupsOpen] = useState(false);
   
-  const { programs, loading, refetch } = usePrograms();
+  const { programs, loading, error, refetch } = usePrograms();
   const { 
     ageGroups, 
     refetch: refetchAgeGroups 
@@ -170,13 +171,13 @@ const AdminPrograms: React.FC = () => {
     },
     {
       label: 'Toplam Öğrenci',
-      value: programs.reduce((sum, p) => sum + p.enrolled_students, 0),
+      value: programs.reduce((sum, p) => sum + (p.enrolled_students || 0), 0),
       icon: Users,
       color: 'bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400'
     },
     {
       label: 'Toplam Ders',
-      value: programs.reduce((sum, p) => sum + p.lessons_per_week, 0),
+      value: programs.reduce((sum, p) => sum + (p.lessons_per_week || 0), 0),
       icon: Clock,
       color: 'bg-yellow-100 dark:bg-yellow-950 text-yellow-600 dark:text-yellow-400'
     },
@@ -184,8 +185,23 @@ const AdminPrograms: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-[var(--color-primary)]" />
+        <p className="text-[var(--fg-muted)]">Programlar yükleniyor...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <AlertTriangle className="h-12 w-12 text-red-500" />
+        <h3 className="text-lg font-semibold text-[var(--fg)]">Bir hata oluştu</h3>
+        <p className="text-[var(--fg-muted)] text-center max-w-md">{error}</p>
+        <Button onClick={() => refetch()} variant="outline">
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Tekrar Dene
+        </Button>
       </div>
     );
   }
@@ -317,8 +333,8 @@ const AdminPrograms: React.FC = () => {
                 </div>
               </div>
               <div className="flex gap-2 mt-3 flex-wrap">
-                {getAgeGroupBadge(program.age_group)}
-                {getStatusBadge(program.status)}
+                {getAgeGroupBadge(program.age_group || '')}
+                {getStatusBadge(program.status || 'draft')}
               </div>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
@@ -354,7 +370,7 @@ const AdminPrograms: React.FC = () => {
                   variant="outline" 
                   size="sm" 
                   className="flex-1"
-                  onClick={() => handleEditClick(program.id)}
+                  onClick={() => handleEditClick(String(program.id))}
                 >
                   <Edit className="h-4 w-4 mr-2" />
                   Düzenle
@@ -362,7 +378,7 @@ const AdminPrograms: React.FC = () => {
                 <Button 
                   variant="destructive" 
                   size="sm"
-                  onClick={() => handleDeleteClick(program.id)}
+                  onClick={() => handleDeleteClick(String(program.id))}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -375,6 +391,9 @@ const AdminPrograms: React.FC = () => {
           <div className="col-span-full text-center py-12">
             <BookOpen className="h-16 w-16 text-[var(--fg-muted)] mx-auto mb-4" />
             <p className="text-[var(--fg-muted)] text-lg">Program bulunamadı</p>
+            <Button onClick={handleNewProgram} variant="link" className="mt-2">
+              Yeni bir program oluşturun
+            </Button>
           </div>
         )}
       </div>

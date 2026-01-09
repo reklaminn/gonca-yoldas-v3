@@ -38,7 +38,7 @@ const SendPulse: React.FC = () => {
     e.preventDefault();
     
     // Front-end POST placeholder - no real API call
-    console.log('SendPulse Demo Request:', formData);
+
     
     toast.success('Demo talebiniz alındı! En kısa sürede sizinle iletişime geçeceğiz.');
     

@@ -1,266 +1,198 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { motion } from 'framer-motion';
+import { Package, Calendar, CreditCard, CheckCircle, Clock, XCircle, AlertCircle, RefreshCw, ArrowRight } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { 
-  ShoppingBag, 
-  Search,
-  Calendar,
-  CreditCard,
-  Package,
-  FileText,
-  Loader2,
-  ArrowRight
-} from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/authStore';
-import { supabase } from '@/lib/supabaseClient';
+import { getUserOrders, linkGuestOrdersToUser } from '@/services/orders';
+import { useNavigate } from 'react-router-dom';
 
-interface Order {
-  id: string;
-  order_number: string;
-  order_date: string;
-  program_title: string;
-  total_amount: number;
-  payment_status: string;
-  payment_method: string;
-  installment: number;
-}
-
-export default function Orders() {
-  const { user, loading: authLoading } = useAuthStore();
-  const [orders, setOrders] = useState<Order[]>([]);
+const Orders: React.FC = () => {
+  const { user } = useAuthStore();
+  const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const navigate = useNavigate();
 
   useEffect(() => {
-    if (!authLoading && user) {
-      fetchOrders();
+    let mounted = true;
+
+    async function fetchOrders() {
+      if (!user?.email) {
+        if (mounted) setLoading(false);
+        return;
+      }
+
+      try {
+        // 1. Önce misafir siparişlerini bu kullanıcıya bağlamayı dene
+        // Bu, siparişlerin görünmemesi sorununu çözer (eğer email eşleşiyorsa)
+        if (user.id) {
+          await linkGuestOrdersToUser(user.email, user.id).catch(err => 
+            console.warn('Sipariş bağlama hatası (önemsiz olabilir):', err)
+          );
+        }
+
+        // 2. Siparişleri çek
+        const data = await getUserOrders(user.email);
+
+        
+        if (mounted) {
+          setOrders(data);
+        }
+      } catch (error) {
+        console.error('❌ [Orders] Siparişler çekilemedi:', error);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
     }
-  }, [user, authLoading]);
 
-  const fetchOrders = async () => {
-    if (!user) return;
+    fetchOrders();
 
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('order_date', { ascending: false });
-
-      if (error) throw error;
-      setOrders(data || []);
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (authLoading || loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-[var(--color-primary)]" />
-      </div>
-    );
-  }
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'completed':
-        return <Badge className="bg-green-500">Tamamlandı</Badge>;
+      case 'paid':
+        return (
+          <Badge className="bg-green-500/10 text-green-500 hover:bg-green-500/20 border-green-500/20">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Tamamlandı
+          </Badge>
+        );
       case 'pending':
-        return <Badge className="bg-yellow-500">Beklemede</Badge>;
-      case 'failed':
-        return <Badge className="bg-red-500">Başarısız</Badge>;
+        return (
+          <Badge className="bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 border-yellow-500/20">
+            <Clock className="h-3 w-3 mr-1" />
+            Beklemede
+          </Badge>
+        );
+      case 'cancelled':
+        return (
+          <Badge className="bg-red-500/10 text-red-500 hover:bg-red-500/20 border-red-500/20">
+            <XCircle className="h-3 w-3 mr-1" />
+            İptal Edildi
+          </Badge>
+        );
       default:
-        return <Badge className="bg-gray-500">{status}</Badge>;
+        return <Badge variant="outline">{status}</Badge>;
     }
   };
 
-  const getPaymentMethodText = (method: string) => {
-    switch (method) {
-      case 'credit_card':
-        return 'Kredi Kartı';
-      case 'bank_transfer':
-        return 'Banka Transferi';
-      case 'cash':
-        return 'Nakit';
-      default:
-        return method;
-    }
-  };
-
-  const filteredOrders = orders.filter(order =>
-    order.order_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    order.program_title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const stats = [
-    {
-      label: 'Toplam Sipariş',
-      value: orders.length,
-      icon: ShoppingBag,
-      color: 'text-[var(--color-primary)]',
-      bgColor: 'bg-[var(--color-primary)]/20'
-    },
-    {
-      label: 'Tamamlanan',
-      value: orders.filter(o => o.payment_status === 'completed').length,
-      icon: Package,
-      color: 'text-green-500',
-      bgColor: 'bg-green-500/20'
-    },
-    {
-      label: 'Bekleyen',
-      value: orders.filter(o => o.payment_status === 'pending').length,
-      icon: Calendar,
-      color: 'text-yellow-500',
-      bgColor: 'bg-yellow-500/20'
-    },
-    {
-      label: 'Toplam Tutar',
-      value: `₺${orders.reduce((sum, o) => sum + o.total_amount, 0).toLocaleString('tr-TR')}`,
-      icon: CreditCard,
-      color: 'text-blue-500',
-      bgColor: 'bg-blue-500/20'
-    },
-  ];
-
-  return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-[var(--fg)]">Siparişlerim</h1>
-        <p className="text-[var(--fg-muted)] mt-2">Tüm sipariş ve ödeme geçmişiniz</p>
-      </div>
-
-      {/* Stats */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => {
-          const Icon = stat.icon;
-          return (
-            <Card key={index} className="border-[var(--border)] bg-[var(--bg-card)]">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-[var(--fg-muted)] mb-1">{stat.label}</p>
-                    <p className="text-2xl font-bold text-[var(--fg)]">{stat.value}</p>
-                  </div>
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${stat.bgColor}`}>
-                    <Icon className={`h-6 w-6 ${stat.color}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Search */}
-      <Card className="border-[var(--border)] bg-[var(--bg-card)]">
-        <CardContent className="pt-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-[var(--fg-muted)]" />
-            <Input
-              placeholder="Sipariş numarası veya program adı ile ara..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-[var(--bg-input)] text-[var(--fg)] border-[var(--border)]"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Orders List */}
-      {filteredOrders.length === 0 ? (
-        <Card className="border-[var(--border)] bg-[var(--bg-card)]">
-          <CardContent className="py-12 text-center">
-            <ShoppingBag className="h-12 w-12 text-[var(--fg-muted)] mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-[var(--fg)] mb-2">
-              {searchQuery ? 'Sipariş bulunamadı' : 'Henüz siparişiniz bulunmuyor'}
-            </h3>
-            <p className="text-[var(--fg-muted)] mb-6">
-              {searchQuery 
-                ? 'Arama kriterlerinize uygun sipariş bulunamadı'
-                : 'Programlarımızı inceleyerek ilk siparişinizi oluşturabilirsiniz'
-              }
-            </p>
-            {!searchQuery && (
-              <Button asChild>
-                <Link to="/programs">Programları İncele</Link>
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {filteredOrders.map((order) => (
-            <Card key={order.id} className="border-[var(--border)] bg-[var(--bg-card)] hover:shadow-lg transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-lg font-semibold text-[var(--fg)]">
-                            {order.order_number}
-                          </h3>
-                          {getStatusBadge(order.payment_status)}
-                        </div>
-                        <p className="text-[var(--fg-muted)]">{order.program_title}</p>
-                      </div>
-                    </div>
-
-                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      <div className="flex items-center gap-2 text-sm text-[var(--fg-muted)]">
-                        <Calendar className="h-4 w-4" />
-                        <span>{new Date(order.order_date).toLocaleDateString('tr-TR', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-[var(--fg-muted)]">
-                        <CreditCard className="h-4 w-4" />
-                        <span>{getPaymentMethodText(order.payment_method)}</span>
-                        {order.installment > 1 && (
-                          <Badge variant="outline" className="text-xs">
-                            {order.installment} Taksit
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="text-[var(--fg-muted)]">Tutar:</span>
-                        <span className="font-semibold text-[var(--fg)]">
-                          ₺{order.total_amount.toLocaleString('tr-TR')}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Button variant="outline" asChild>
-                      <Link to={`/dashboard/orders/${order.id}`}>
-                        <FileText className="h-4 w-4 mr-2" />
-                        Detaylar
-                      </Link>
-                    </Button>
-                    {order.payment_status === 'completed' && (
-                      <Button variant="outline">
-                        <FileText className="h-4 w-4 mr-2" />
-                        Fatura
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+  if (loading) {
+    return (
+      <div className="space-y-6 p-4">
+        <div className="h-8 w-48 bg-gray-200 rounded animate-pulse" />
+        <div className="grid gap-4">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-48 bg-gray-100 rounded-xl animate-pulse" />
           ))}
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <h1 className="text-3xl font-bold text-gray-900">Siparişlerim</h1>
+        <p className="text-gray-500 mt-2">
+          Tüm sipariş geçmişinizi görüntüleyin
+        </p>
+      </motion.div>
+
+      <div className="grid gap-4">
+        {orders.map((order, index) => (
+          <motion.div
+            key={order.id}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: index * 0.1 }}
+          >
+            <Card className="hover:shadow-md transition-shadow">
+              <CardHeader>
+                <div className="flex items-start justify-between flex-wrap gap-4">
+                  <div className="space-y-1">
+                    <CardTitle>{order.program_title || 'Eğitim Programı'}</CardTitle>
+                    <CardDescription className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      {new Date(order.created_at).toLocaleDateString('tr-TR', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </CardDescription>
+                  </div>
+                  {getStatusBadge(order.status || order.payment_status)}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-5 w-5 text-blue-600" />
+                    <div>
+                      <p className="text-sm text-gray-500">Sipariş No</p>
+                      <p className="font-semibold">#{order.order_number || order.id.slice(0, 8)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="h-5 w-5 text-blue-600" />
+                    <div>
+                      <p className="text-sm text-gray-500">Tutar</p>
+                      <p className="font-semibold">{order.total_amount?.toLocaleString('tr-TR')} ₺</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className="justify-end pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => navigate(`/dashboard/orders/${order.id}`)}
+                >
+                  Detaylar
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              </CardFooter>
+            </Card>
+          </motion.div>
+        ))}
+      </div>
+
+      {orders.length === 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Package className="h-16 w-16 text-gray-300 mb-4" />
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Henüz sipariş yok
+              </h3>
+              <p className="text-gray-500 text-center mb-6">
+                İlk siparişinizi vermek için programlarımıza göz atın
+              </p>
+              <Button onClick={() => navigate('/programs')}>
+                Programları İncele
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
       )}
     </div>
   );
-}
+};
+
+export default Orders;

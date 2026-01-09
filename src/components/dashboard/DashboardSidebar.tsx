@@ -45,23 +45,20 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ sidebarOpen, setSid
   ];
 
   const handleSignOut = async () => {
-    console.log('🔵 [DashboardSidebar] handleSignOut called');
-    alert('BUTTON CLICKED!'); // 🔴 TEST: Bu alert görünmeli!
-    
     try {
-      const success = await signOutUser();
+      // Sidebar'ı kapat
+      setSidebarOpen(false);
       
-      if (success) {
-        console.log('✅ [DashboardSidebar] Logout successful, redirecting...');
-        setSidebarOpen(false);
-        navigate('/', { replace: true });
-      } else {
-        console.error('❌ [DashboardSidebar] Logout failed');
-        toast.error('Çıkış yapılırken bir hata oluştu');
-      }
+      // Çıkış işlemini başlat
+      await signOutUser();
+      
+      // Ana sayfaya yönlendir
+      navigate('/', { replace: true });
+      toast.success('Başarıyla çıkış yapıldı');
     } catch (error) {
-      console.error('❌ [DashboardSidebar] Logout error:', error);
-      toast.error('Çıkış yapılırken bir hata oluştu');
+      console.error('Logout error:', error);
+      // Hata olsa bile ana sayfaya at
+      navigate('/', { replace: true });
     }
   };
 
@@ -84,20 +81,20 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ sidebarOpen, setSid
 
   return (
     <aside 
-      className={`fixed inset-y-0 left-0 w-64 bg-[var(--bg-card)] border-r border-[var(--border)] z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+      className={`fixed inset-y-0 left-0 w-64 bg-white border-r border-gray-200 z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}
     >
       <div className="flex flex-col h-full">
         {/* Header with Avatar and User Info */}
-        <div className="p-6 border-b border-[var(--border)]">
+        <div className="p-6 border-b border-gray-200">
           <div className="space-y-4">
             {/* Close button for mobile */}
             <div className="flex items-center justify-between lg:hidden mb-4">
-              <h2 className="text-lg font-bold text-[var(--fg)]">Menü</h2>
+              <h2 className="text-lg font-bold text-gray-900">Menü</h2>
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors"
+                className="text-gray-500 hover:text-gray-900 transition-colors"
               >
                 <X className="h-6 w-6" />
               </button>
@@ -105,26 +102,26 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ sidebarOpen, setSid
 
             {/* Avatar and User Info */}
             <div className="flex items-center gap-3">
-              <Avatar className="h-12 w-12 border-2 border-[var(--color-primary)]/20">
+              <Avatar className="h-12 w-12 border-2 border-blue-100">
                 <AvatarImage src={profile?.avatar_url || user?.user_metadata?.avatar_url || undefined} alt={getDisplayName()} />
-                <AvatarFallback className="bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-semibold">
+                <AvatarFallback className="bg-blue-50 text-blue-600 font-semibold">
                   {getUserInitials()}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <h1 className="text-base font-bold text-[var(--fg)] truncate">
+                <h1 className="text-base font-bold text-gray-900 truncate">
                   {getDisplayName()}
                 </h1>
-                <p className="text-xs text-[var(--fg-muted)] truncate">{user?.email}</p>
+                <p className="text-xs text-gray-500 truncate">{user?.email}</p>
               </div>
             </div>
             
             {/* Homepage Button */}
-            <div className="pt-4 border-t border-[var(--border)]">
+            <div className="pt-4 border-t border-gray-200">
               <Link to="/" onClick={() => setSidebarOpen(false)}>
                 <Button 
                   variant="outline" 
-                  className="w-full justify-start border-[var(--border)] hover:bg-[var(--bg-hover)] hover:text-[var(--color-primary)] transition-colors"
+                  className="w-full justify-start border-gray-200 hover:bg-gray-50 hover:text-blue-600 transition-colors"
                 >
                   <Home className="h-5 w-5 mr-3" />
                   Ana Sayfaya Dön
@@ -152,8 +149,8 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ sidebarOpen, setSid
                   onClick={() => setSidebarOpen(false)}
                   className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                     isActive
-                      ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-semibold'
-                      : 'text-[var(--fg)] hover:bg-[var(--bg-hover)] hover:text-[var(--color-primary)] font-medium'
+                      ? 'bg-blue-50 text-blue-600 font-semibold'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-blue-600 font-medium'
                   }`}
                 >
                   <Icon className="h-5 w-5 flex-shrink-0" />
@@ -175,7 +172,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ sidebarOpen, setSid
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setSidebarOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-[var(--fg)] hover:bg-[var(--bg-hover)] hover:text-[var(--color-primary)] font-medium"
+                className="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-gray-600 hover:bg-gray-50 hover:text-blue-600 font-medium"
               >
                 <BookOpen className="h-5 w-5 flex-shrink-0" />
                 <span>Kurslarım</span>
@@ -184,19 +181,14 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ sidebarOpen, setSid
           )}
         </nav>
 
-        {/* 🔴 TEST LOGOUT BUTTON - INLINE ONCLICK */}
-        <div className="p-4 border-t border-[var(--border)]">
+        {/* Logout Button */}
+        <div className="p-4 border-t border-gray-200">
           <button
-            onClick={() => {
-              alert('🔴 INLINE ONCLICK WORKS!');
-              console.log('🔴 INLINE ONCLICK TRIGGERED');
-              handleSignOut();
-            }}
-            className="inline-flex items-center justify-start gap-3 w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors text-[var(--fg)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
-            style={{ position: 'relative', zIndex: 9999 }}
+            onClick={handleSignOut}
+            className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-sm font-medium transition-colors text-gray-600 hover:text-red-600 hover:bg-red-50"
           >
             <LogOut className="h-5 w-5" />
-            <span className="font-medium">Çıkış Yap (TEST)</span>
+            <span>Çıkış Yap</span>
           </button>
         </div>
       </div>

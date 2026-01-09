@@ -1,96 +1,169 @@
 import { supabase } from '@/lib/supabaseClient';
 
-export interface ContactEventData {
-  name: string;
+interface SendPulseOrderData {
   email: string;
   phone: string;
-  subject: string;
-  message: string;
+  fullName?: string;
+  paymentMethod: string;
+  paymentStatus: string;
+  orderId?: string;
 }
 
-/**
- * Sends a contact event to SendPulse via Supabase Edge Function.
- * USES DIRECT FETCH FOR BETTER DEBUGGING LOGS
- */
-export const sendContactEvent = async (data: ContactEventData, submissionId: string) => {
-  const startTime = Date.now();
-  console.group('🚀 SendPulse Debugger');
-  console.log(`[${new Date().toISOString()}] Starting request...`);
-  console.log('📦 Payload Submission ID:', submissionId);
+interface SendPulseProgramData {
+  id: string;
+  slug: string;
+  title: string;
+  price: number;
+  image: string;
+  sendpulse_id?: string;        // SendPulse sistemindeki asıl ID
+  sendpulse_upsell_id?: string; // Programın varsayılan upsell ID'si
+}
 
-  // 1. URL ve Key Hazırlığı
-  const projectUrl = import.meta.env.VITE_SUPABASE_URL;
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  
-  // URL'in sonuna /functions/v1/... ekliyoruz
-  const functionUrl = `${projectUrl}/functions/v1/send-contact-event`;
-  
-  console.log('📍 Target URL:', functionUrl);
+export const formatOrderForSendPulse = (
+  orderData: SendPulseOrderData,
+  programData: SendPulseProgramData,
+  totalAmount: number,
+  selectedUpsellIds?: string
+) => {
+  // 1. Ana Kurs ID'si
+  const courseId = programData.sendpulse_id && programData.sendpulse_id.trim() !== '' 
+    ? programData.sendpulse_id 
+    : programData.id;
 
-  // 2. Payload Hazırlığı
-  const payload = {
-    contactData: data,
-    submissionId: submissionId,
-    _debugUrl: import.meta.env.SENDPULSE_CONTACT_URL
+  // 2. Upsell ID'si
+  // Eğer sepette seçilmiş özel upsell'ler varsa onları kullan, yoksa programın varsayılanını kullan
+  const upsellId = selectedUpsellIds && selectedUpsellIds.trim() !== ''
+    ? selectedUpsellIds
+    : (programData.sendpulse_upsell_id || '');
+
+  console.log('📦 [SendPulse] Veri Hazırlanıyor:', { 
+    courseId, 
+    upsellId, 
+    rawUpsellId: programData.sendpulse_upsell_id,
+    selectedUpsellIds 
+  });
+
+  return {
+    email: orderData.email,
+    phone: orderData.phone,
+    event_date: new Date().toISOString().split('T')[0],
+    variables: {
+      program_title: programData.title,
+      program_date: new Date().toISOString(),
+      order_id: orderData.orderId || '',
+      amount: totalAmount,
+      payment_method: orderData.paymentMethod,
+      full_name: orderData.fullName || orderData.email,
+      course_id: courseId,          
+      upsell_course_id: upsellId
+    }
   };
+};
 
+export const sendPurchaseEvent = async (eventData: any, orderId: string) => {
   try {
-    // 3. Timeout Kontrolcüsü (15 Saniye)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.warn('⏰ Timeout trigger fired at 15s');
-      controller.abort();
-    }, 15000);
+    console.log('📤 [SendPulse] Gönderiliyor:', JSON.stringify(eventData, null, 2));
 
-    console.log('📡 Sending direct FETCH request...');
+    // URL'i .env'den veya varsayılan yapıdan oluştur
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     
-    // Supabase SDK yerine native fetch kullanıyoruz ki hatayı net görelim
+    // Edge Function URL'ini manuel oluştur (invoke yerine fetch kullanmak CORS sorunlarını azaltır)
+    // Örn: https://xyz.supabase.co/functions/v1/send-purchase-event
+    const functionUrl = `${supabaseUrl}/functions/v1/send-purchase-event`;
+
+    console.log('🔗 [SendPulse] Hedef URL:', functionUrl);
+
     const response = await fetch(functionUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${anonKey}` // Anon key ile yetkilendirme
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        // 'apikey' header'ı bazı durumlarda gereklidir
+        'apikey': supabaseAnonKey
       },
-      body: JSON.stringify(payload),
-      signal: controller.signal
+      body: JSON.stringify(eventData)
     });
 
-    clearTimeout(timeoutId); // İşlem biterse sayacı durdur
-
-    const duration = Date.now() - startTime;
-    console.log(`⏱️ Request finished in ${duration}ms`);
-    console.log(`📊 HTTP Status: ${response.status} ${response.statusText}`);
-
-    // 4. Hata Yanıtını Okuma
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Server Error Body:', errorText);
-      throw new Error(`Server responded with ${response.status}: ${errorText}`);
+    let data;
+    const responseText = await response.text();
+    
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = { message: responseText };
     }
 
-    // 5. Başarılı Yanıtı Okuma
-    const responseData = await response.json();
-    console.log('✅ Success Response Body:', responseData);
-    console.groupEnd();
-    return responseData;
+    if (!response.ok) {
+      throw new Error(`Function Error (${response.status}): ${data.error || data.message || response.statusText}`);
+    }
+
+    console.log('✅ [SendPulse] Başarılı:', data);
+
+    // Başarılı gönderimi veritabanına işle
+    await supabase
+      .from('orders')
+      .update({ 
+        sendpulse_sent: true,
+        sendpulse_sent_at: new Date().toISOString()
+      })
+      .eq('id', orderId);
+
+    return { success: true, data };
 
   } catch (error: any) {
-    const duration = Date.now() - startTime;
-    console.error(`❌ Request FAILED after ${duration}ms`);
+    console.error('❌ [SendPulse] Hata:', error);
     
-    if (error.name === 'AbortError') {
-      console.error('💀 TIMEOUT ERROR: Request took longer than 15 seconds.');
-      console.error('Possible Causes:');
-      console.error('1. Edge Function Cold Start is extremely slow.');
-      console.error('2. The Function is crashing silently before sending headers.');
-      console.error('3. Network firewall/proxy is blocking the connection.');
-    } else {
-      console.error('💥 Network/Code Error:', error.message);
-      console.error('Full Error Object:', error);
+    // Hatayı veritabanına işle
+    await supabase
+      .from('orders')
+      .update({ 
+        sendpulse_error: error.message || 'Unknown error'
+      })
+      .eq('id', orderId);
+
+    return { success: false, error: error.message };
+  }
+};
+
+export const sendContactEvent = async (contactData: any, submissionId: string) => {
+  try {
+    console.log('📤 [SendPulse] Contact Event Gönderiliyor:', JSON.stringify(contactData, null, 2));
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const functionUrl = `${supabaseUrl}/functions/v1/send-contact-event`;
+
+    console.log('🔗 [SendPulse] Hedef URL:', functionUrl);
+
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'apikey': supabaseAnonKey
+      },
+      body: JSON.stringify({ ...contactData, submission_id: submissionId })
+    });
+
+    let data;
+    const responseText = await response.text();
+    
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = { message: responseText };
     }
-    
-    console.groupEnd();
-    // Soft Fail: UI akışını bozmamak için null dönüyoruz
-    return null;
+
+    if (!response.ok) {
+      throw new Error(`Function Error (${response.status}): ${data.error || data.message || response.statusText}`);
+    }
+
+    console.log('✅ [SendPulse] Contact Event Başarılı:', data);
+    return { success: true, data };
+
+  } catch (error: any) {
+    console.error('❌ [SendPulse] Contact Event Hatası:', error);
+    return { success: false, error: error.message };
   }
 };

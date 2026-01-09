@@ -19,12 +19,11 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('lucide-react')) return 'icons';
-            if (id.includes('recharts')) return 'charts';
-            return 'vendor';
-          }
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom', 'framer-motion'],
+          ui: ['@radix-ui/react-dialog', '@radix-ui/react-slot', '@radix-ui/react-label', 'lucide-react', 'sonner'],
+          utils: ['date-fns', 'clsx', 'tailwind-merge'],
+          supabase: ['@supabase/supabase-js'],
         },
       },
     },

@@ -49,6 +49,7 @@ const AdminMessages = React.lazy(() => import('./pages/admin/AdminMessages'));
 const AdminPrograms = React.lazy(() => import('./pages/admin/AdminPrograms'));
 const ProgramForm = React.lazy(() => import('./pages/admin/ProgramForm'));
 const AdminStudents = React.lazy(() => import('./pages/admin/AdminStudents'));
+const UserForm = React.lazy(() => import('./pages/admin/UserForm'));
 const AdminRoles = React.lazy(() => import('./pages/admin/AdminRoles'));
 const AdminOrders = React.lazy(() => import('./pages/admin/AdminOrders'));
 const AdminSettings = React.lazy(() => import('./pages/admin/Settings'));
@@ -110,17 +111,34 @@ function App() {
 
     const initAuth = async () => {
       try {
-        // 1. Mevcut oturumu kontrol et
-        const { data: { session }, error } = await supabase.auth.getSession();
+        // 1. Mevcut oturumu kontrol et (Timeout Korumalı)
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Auth timeout')), 8000)
+        );
 
-        if (error) {
-          console.error('❌ [App] Oturum hatası:', error.message);
-          throw error;
+        let sessionData;
+        try {
+          const result = await Promise.race([sessionPromise, timeoutPromise]) as any;
+          sessionData = result.data;
+        } catch (e) {
+          console.warn('⚠️ [App] Auth check timed out.');
+          const currentSession = useAuthStore.getState().session;
+          if (currentSession) {
+             console.log('✅ [App] Timeout recovery: Using persisted session.');
+             sessionData = { session: currentSession };
+          } else {
+             sessionData = { session: null };
+          }
         }
 
+        const { session } = sessionData || { session: null };
+
         if (!session) {
-          console.log('ℹ️ [App] Aktif oturum yok, temizleniyor...');
-          if (mounted) reset();
+          console.log('ℹ️ [App] Aktif oturum yok.');
+          if (mounted) {
+            setLoading(false);
+          }
           return;
         }
 
@@ -133,14 +151,10 @@ function App() {
           const profileData = await fetchProfileDirect(session.user.id, session.access_token);
           if (profileData) {
             setProfile(profileData);
-          } else {
-            // Profil çekilemediyse bile oturumu açık tut ama logla
-            console.warn('⚠️ [App] Profil verisi alınamadı');
           }
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('❌ [App] Başlatma hatası:', error);
-        if (mounted) reset();
       } finally {
         if (mounted) setLoading(false);
       }
@@ -148,21 +162,15 @@ function App() {
 
     initAuth();
 
-    // 3. Oturum değişikliklerini dinle (Login, Logout, Token Refresh)
+    // 3. Oturum değişikliklerini dinle
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
       
-      console.log('🔄 [App] Auth Olayı:', event);
-
-      // DÜZELTME: 'USER_DELETED' kontrolü kaldırıldı çünkü TypeScript tip tanımlarında yok.
-      // 'SIGNED_OUT' oturum bitişi için yeterlidir.
       if (event === 'SIGNED_OUT') {
-        // Çıkış yapıldıysa her şeyi temizle
         reset();
         setLoading(false);
       } 
       else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        // Giriş yapıldıysa veya token yenilendiyse state'i güncelle
         if (session) {
           setUser(session.user);
           setSession(session);
@@ -239,6 +247,8 @@ function App() {
               <Route index element={<AdminDashboard />} />
               <Route path="messages" element={<AdminMessages />} />
               <Route path="students" element={<AdminStudents />} />
+              <Route path="users/new" element={<UserForm />} />
+              <Route path="users/edit/:id" element={<UserForm />} />
               <Route path="roles" element={<AdminRoles />} />
               <Route path="programs" element={<AdminPrograms />} />
               <Route path="programs/new" element={<ProgramForm />} />

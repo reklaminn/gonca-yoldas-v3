@@ -45,7 +45,7 @@ export const useAuthStore = create<AuthState>()(
       setSession: (session) => set({ session }),
       setLoading: (loading) => set({ loading }),
       reset: () => {
-        console.log('🔴 [AuthStore] Resetleniyor - Tüm veriler siliniyor');
+
         set({ user: null, profile: null, session: null, loading: false });
         
         // LocalStorage temizliği (Sadece auth ile ilgili olanlar)

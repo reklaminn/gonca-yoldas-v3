@@ -1,12 +1,18 @@
 import React from 'react';
-import { Menu, Bell, Search, LogOut } from 'lucide-react';
+import { Menu, Bell, LogOut, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuthStore } from '@/store/authStore';
-import { useNavigate } from 'react-router-dom';
-import ThemeToggle from '@/components/theme/ThemeToggle';
 import { signOutUser } from '@/services/auth';
+import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 interface DashboardHeaderProps {
@@ -18,28 +24,20 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({ setSidebarOpen }) => 
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
-    console.log('🔵 [DashboardHeader] handleSignOut called');
-    
     try {
-      const success = await signOutUser();
-      
-      if (success) {
-        console.log('✅ [DashboardHeader] Logout successful, redirecting...');
-        navigate('/', { replace: true });
-      } else {
-        console.error('❌ [DashboardHeader] Logout failed');
-        toast.error('Çıkış yapılırken bir hata oluştu');
-      }
+      await signOutUser();
+      navigate('/', { replace: true });
+      toast.success('Başarıyla çıkış yapıldı');
     } catch (error) {
-      console.error('❌ [DashboardHeader] Logout error:', error);
-      toast.error('Çıkış yapılırken bir hata oluştu');
+      console.error('Logout error:', error);
+      navigate('/', { replace: true });
     }
   };
 
   const getUserInitials = () => {
-    const name = profile?.full_name || '';
-    if (name) {
-      const names = name.split(' ');
+    const fullName = profile?.full_name || user?.user_metadata?.full_name;
+    if (fullName) {
+      const names = fullName.split(' ');
       if (names.length >= 2) {
         return `${names[0][0]}${names[1][0]}`.toUpperCase();
       }
@@ -49,67 +47,61 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({ setSidebarOpen }) => 
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-[var(--bg)]/95 backdrop-blur-sm border-b border-[var(--border)]">
+    <header className="sticky top-0 z-40 bg-white border-b border-gray-200">
       <div className="flex items-center justify-between h-16 px-4 lg:px-8">
-        {/* Left Side - Mobile Menu Button */}
         <div className="flex items-center gap-4">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="lg:hidden text-[var(--fg)] hover:text-[var(--color-primary)] transition-colors"
+            className="p-2 -ml-2 text-gray-500 rounded-md lg:hidden hover:text-gray-900 hover:bg-gray-100"
           >
             <Menu className="h-6 w-6" />
           </button>
-
-          {/* Search Bar - Hidden on mobile */}
-          <div className="hidden md:flex items-center relative">
-            <Search className="absolute left-3 h-4 w-4 text-[var(--fg-muted)]" />
-            <Input
-              type="search"
-              placeholder="Ara..."
-              className="pl-10 w-64 bg-[var(--bg-card)] border-[var(--border)] focus:border-[var(--color-primary)]"
-            />
-          </div>
+          
+          <h1 className="text-xl font-bold text-gray-900 lg:hidden">
+            Gonca Yoldaş
+          </h1>
         </div>
 
-        {/* Right Side - Actions */}
-        <div className="flex items-center gap-3">
-          {/* Theme Toggle */}
-          <ThemeToggle />
-
-          {/* Notifications */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative text-[var(--fg)] hover:text-[var(--color-primary)] hover:bg-[var(--bg-hover)]"
-          >
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" className="text-gray-500 hover:text-gray-900">
             <Bell className="h-5 w-5" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
           </Button>
 
-          {/* User Menu */}
-          <div className="hidden sm:flex items-center gap-3 pl-3 border-l border-[var(--border)]">
-            <Avatar className="h-8 w-8 border-2 border-[var(--color-primary)]/20">
-              <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || 'User'} />
-              <AvatarFallback className="bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-xs font-semibold">
-                {getUserInitials()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="hidden lg:block">
-              <p className="text-sm font-semibold text-[var(--fg)]">{profile?.full_name || 'Kullanıcı'}</p>
-              <p className="text-xs text-[var(--fg-muted)]">{user?.email}</p>
-            </div>
-          </div>
-
-          {/* Logout Button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleSignOut}
-            className="text-[var(--fg)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
-            title="Çıkış Yap"
-          >
-            <LogOut className="h-5 w-5" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={profile?.avatar_url || user?.user_metadata?.avatar_url || undefined} />
+                  <AvatarFallback className="bg-blue-100 text-blue-600">
+                    {getUserInitials()}
+                  </AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="end" forceMount>
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-medium leading-none">
+                    {profile?.full_name || user?.user_metadata?.full_name || 'Kullanıcı'}
+                  </p>
+                  <p className="text-xs leading-none text-muted-foreground">
+                    {user?.email}
+                  </p>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link to="/dashboard/profile" className="cursor-pointer">
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Profil</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleSignOut} className="text-red-600 cursor-pointer focus:text-red-600 focus:bg-red-50">
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Çıkış Yap</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>
