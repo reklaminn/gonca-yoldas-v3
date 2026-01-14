@@ -145,7 +145,8 @@
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: linear-gradient(90deg, #ec4f4f 0%, #ec8ebb 100%);
+    /* Updated hover to match the new richer pastel gradient */
+    background: linear-gradient(90deg, #ff8fa3 0%, #ff9eb5 100%);
     transform: scale(1.03);
     box-shadow: var(--shadow-lg);
     color: #ffffff !important;
@@ -276,7 +277,9 @@
 
   /* Gradient utilities */
   .bg-gradient-primary {
-    background: linear-gradient(90deg, #ff3a3a 0%, #ff6eb5 100%);
+    /* Richer Pastel Gradient: Warm Pink to Soft Magenta */
+    /* Darker than previous attempt, but still modern/pastel */
+    background: linear-gradient(90deg, #ff758c 0%, #ff7eb3 100%);
   }
 
   /* Highlight text utility */
