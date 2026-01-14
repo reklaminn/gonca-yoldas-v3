@@ -33,7 +33,9 @@ import {
   Phone,
   MapPin,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  ShieldCheck,
+  Image as ImageIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -48,8 +50,10 @@ import {
 import {
   getGeneralSettings,
   updateGeneralSettings,
-  type GeneralSettings
+  type GeneralSettings,
+  type SecurityBadge
 } from '@/services/generalSettings';
+import { PaymentBadgeUploader } from '@/components/admin/PaymentBadgeUploader';
 
 const SettingsPage: React.FC = () => {
   const [showApiKeys, setShowApiKeys] = useState(false);
@@ -74,6 +78,15 @@ const SettingsPage: React.FC = () => {
   const [invoiceEnabled, setInvoiceEnabled] = useState(true);
   const [showPricesWithVAT, setShowPricesWithVAT] = useState(true);
   const [coursesExternalUrl, setCoursesExternalUrl] = useState('');
+
+  // Footer Payment Settings State
+  const [footerPaymentMessage, setFooterPaymentMessage] = useState('');
+  const [footerPaymentBadgeUrl, setFooterPaymentBadgeUrl] = useState('');
+  const [footerSecurityBadges, setFooterSecurityBadges] = useState<SecurityBadge[]>([
+    { id: 'ssl', label: 'SSL Güvenliği', enabled: true },
+    { id: '3d_secure', label: '3D Secure', enabled: true },
+    { id: 'pci_dss', label: 'PCI DSS', enabled: true }
+  ]);
 
   // Credit Card State
   const [creditCardActive, setCreditCardActive] = useState(false);
@@ -153,6 +166,14 @@ const SettingsPage: React.FC = () => {
         setInvoiceEnabled(settings.invoice_enabled);
         setShowPricesWithVAT(settings.show_prices_with_vat);
         setCoursesExternalUrl(settings.courses_external_url);
+        
+        // Load Footer Payment Settings
+        setFooterPaymentMessage(settings.footer_payment_message || 'Ödeme bilgileriniz 256-bit SSL sertifikası ile şifrelenir ve güvenli bir şekilde işlenir.');
+        setFooterPaymentBadgeUrl(settings.footer_payment_badge_url || '');
+        
+        if (settings.footer_security_badges && Array.isArray(settings.footer_security_badges)) {
+          setFooterSecurityBadges(settings.footer_security_badges);
+        }
       }
     } catch (error) {
       console.error('❌ Error loading settings:', error);
@@ -218,6 +239,42 @@ const SettingsPage: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSaveFooterPaymentSettings = async () => {
+    if (!generalSettings) {
+      toast.error('Ayarlar yüklenemedi');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const success = await updateGeneralSettings(generalSettings.id, {
+        footer_payment_message: footerPaymentMessage,
+        footer_payment_badge_url: footerPaymentBadgeUrl,
+        footer_security_badges: footerSecurityBadges,
+      });
+
+      if (success) {
+        await loadAllSettings();
+      }
+    } catch (error) {
+      console.error('❌ Error saving footer payment settings:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggleSecurityBadge = (badgeId: string) => {
+    setFooterSecurityBadges(prev =>
+      prev.map(badge =>
+        badge.id === badgeId ? { ...badge, enabled: !badge.enabled } : badge
+      )
+    );
+  };
+
+  const handleBadgeUploadSuccess = (url: string) => {
+    setFooterPaymentBadgeUrl(url);
   };
 
   const handleSaveCreditCard = async () => {
@@ -1042,6 +1099,111 @@ const SettingsPage: React.FC = () => {
                       <>
                         <Save className="h-4 w-4 mr-2" />
                         Ayarları Kaydet
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 🎯 Footer Payment Security Settings Card */}
+            <Card className="border-gray-200 dark:border-gray-700">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-white">
+                      <ShieldCheck className="h-5 w-5" />
+                      Footer Ödeme Güvenlik Ayarları
+                    </CardTitle>
+                    <CardDescription className="text-gray-600 dark:text-gray-400">
+                      Footer ve ödeme sayfasında gösterilecek güvenlik mesajlarını yönetin
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Payment Security Message */}
+                <div className="space-y-2">
+                  <Label htmlFor="footer-payment-message" className="text-gray-900 dark:text-white">
+                    Güvenlik Mesajı
+                  </Label>
+                  <Textarea
+                    id="footer-payment-message"
+                    value={footerPaymentMessage}
+                    onChange={(e) => setFooterPaymentMessage(e.target.value)}
+                    placeholder="Ödeme bilgileriniz 256-bit SSL sertifikası ile şifrelenir..."
+                    rows={3}
+                    className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Bu metin footer ve ödeme sayfasında gösterilecektir
+                  </p>
+                </div>
+
+                {/* 🆕 Payment Badge Uploader Component */}
+                <PaymentBadgeUploader
+                  currentBadgeUrl={footerPaymentBadgeUrl}
+                  onUploadSuccess={handleBadgeUploadSuccess}
+                />
+
+                {/* Security Badges Toggles */}
+                <div className="space-y-3">
+                  <Label className="text-gray-900 dark:text-white">Güvenlik Rozetleri</Label>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Footer'da gösterilecek güvenlik rozetlerini seçin
+                  </p>
+                  
+                  {footerSecurityBadges.map((badge) => (
+                    <div
+                      key={badge.id}
+                      className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+                          <ShieldCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900 dark:text-white">{badge.label}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {badge.id === 'ssl' && 'SSL Sertifikası güvenlik rozeti'}
+                            {badge.id === '3d_secure' && '3D Secure ödeme güvenliği'}
+                            {badge.id === 'pci_dss' && 'PCI DSS uyumluluk rozeti'}
+                          </p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={badge.enabled}
+                        onCheckedChange={() => handleToggleSecurityBadge(badge.id)}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Info Box */}
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-blue-900 dark:text-blue-300 mb-1">Bilgi</p>
+                      <p className="text-sm text-blue-800 dark:text-blue-400">
+                        Bu ayarlar footer ve ödeme sayfasında müşterilere gösterilecek güvenlik bilgilerini kontrol eder.
+                        Değişiklikler anında yansıyacaktır.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveFooterPaymentSettings} disabled={isSaving} className="bg-blue-600 hover:bg-blue-700 text-white">
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Kaydediliyor...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Güvenlik Ayarlarını Kaydet
                       </>
                     )}
                   </Button>

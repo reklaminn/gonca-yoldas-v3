@@ -22,23 +22,25 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // App.tsx zaten auth state'ini yönetiyor (initAuth, onAuthStateChange).
-  // Burada sadece store'dan verileri alıp Context'e aktarıyoruz.
-  // Bu sayede "double initialization" ve "race condition" sorunları çözülür.
   const { user, profile, session, loading, reset } = useAuthStore();
 
   const signOut = async () => {
     try {
+      console.log('🔵 [useAuth] Sign out initiated');
       await supabase.auth.signOut();
+      console.log('✅ [useAuth] Supabase sign out successful');
     } catch (error) {
-      console.error('Sign out error:', error);
+      console.error('❌ [useAuth] Sign out error:', error);
     } finally {
       reset();
       // Local storage temizliği
       try {
         localStorage.removeItem('auth-storage');
         localStorage.removeItem('sb-jlwsapdvizzriomadhxj-auth-token');
-      } catch (e) {}
+        console.log('✅ [useAuth] Local storage cleaned');
+      } catch (e) {
+        console.error('❌ [useAuth] Local storage cleanup error:', e);
+      }
     }
   };
 

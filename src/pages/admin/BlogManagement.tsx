@@ -433,36 +433,6 @@ const BlogManagement: React.FC = () => {
         {filteredPosts.map((post) => (
           <Card key={post.id} className="overflow-hidden hover:shadow-lg transition-shadow flex flex-col h-full group relative">
             
-            {/* Admin Overlay Actions */}
-            <div className="absolute top-3 right-3 z-30 flex gap-2">
-              <Button 
-                variant="ghost"
-                size="icon" 
-                className="!flex items-center justify-center h-9 w-9 bg-white hover:bg-gray-100 shadow-md border border-gray-200 rounded-full"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  navigate(`/admin/content/blog/edit/${post.id}`);
-                }}
-                title="Düzenle"
-              >
-                <Pencil className="h-4 w-4 text-blue-600" />
-              </Button>
-              <Button 
-                variant="ghost"
-                size="icon" 
-                className="!flex items-center justify-center h-9 w-9 bg-white hover:bg-gray-100 shadow-md border border-gray-200 rounded-full"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleDeleteClick(post.id);
-                }}
-                title="Sil"
-              >
-                <Trash2 className="h-4 w-4 text-red-600" />
-              </Button>
-            </div>
-
             {/* Featured Badge */}
             {post.is_featured && (
               <div className="absolute top-3 left-3 z-10">
@@ -524,16 +494,16 @@ const BlogManagement: React.FC = () => {
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => toggleFeatured(post)}>
+                  <DropdownMenuContent align="end" className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl z-50 min-w-[160px]">
+                    <DropdownMenuItem onClick={() => toggleFeatured(post)} className="cursor-pointer">
                       <Star className={`h-4 w-4 mr-2 ${post.is_featured ? 'fill-yellow-500 text-yellow-500' : ''}`} />
                       {post.is_featured ? 'Öne Çıkarma' : 'Öne Çıkar'}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => navigate(`/admin/content/blog/edit/${post.id}`)}>
+                    <DropdownMenuItem onClick={() => navigate(`/admin/content/blog/edit/${post.id}`)} className="cursor-pointer">
                       <Pencil className="h-4 w-4 mr-2" />
                       Düzenle
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteClick(post.id)}>
+                    <DropdownMenuItem className="text-red-600 cursor-pointer" onClick={() => handleDeleteClick(post.id)}>
                       <Trash2 className="h-4 w-4 mr-2" />
                       Sil
                     </DropdownMenuItem>

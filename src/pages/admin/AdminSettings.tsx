@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Settings as SettingsIcon,
@@ -20,11 +21,15 @@ import {
   Server,
   Lock,
   Eye,
-  EyeOff
+  EyeOff,
+  CreditCard,
+  ShieldCheck,
+  Image as ImageIcon
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { AgeGroupsManager } from '@/components/admin/AgeGroupsManager';
+import type { SecurityBadge } from '@/services/generalSettings';
 
 const AdminSettings: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -38,6 +43,13 @@ const AdminSettings: React.FC = () => {
     invoice_enabled: true,
     email_notifications: true,
     maintenance_mode: false,
+    footer_payment_message: 'Ödeme bilgileriniz 256-bit SSL sertifikası ile şifrelenir ve güvenli bir şekilde işlenir.',
+    footer_payment_badge_url: 'https://www.esasartdesign.com/contents/img/temp/logo-band_iyzico_ile_ode1x.png',
+    footer_security_badges: [
+      { id: 'ssl', label: 'SSL Güvenliği', enabled: true },
+      { id: '3d_secure', label: '3D Secure', enabled: true },
+      { id: 'pci_dss', label: 'PCI DSS', enabled: true }
+    ] as SecurityBadge[]
   });
 
   const [smtpSettings, setSmtpSettings] = useState({
@@ -63,7 +75,13 @@ const AdminSettings: React.FC = () => {
         .select('*')
         .single();
       
-      if (genData) setGeneralSettings(prev => ({ ...prev, ...genData }));
+      if (genData) {
+        // Parse security badges if it's a string
+        if (typeof genData.footer_security_badges === 'string') {
+          genData.footer_security_badges = JSON.parse(genData.footer_security_badges);
+        }
+        setGeneralSettings(prev => ({ ...prev, ...genData }));
+      }
 
       // Fetch SMTP Settings
       const { data: smtpData } = await supabase
@@ -105,6 +123,15 @@ const AdminSettings: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSecurityBadgeToggle = (badgeId: string, enabled: boolean) => {
+    setGeneralSettings(prev => ({
+      ...prev,
+      footer_security_badges: prev.footer_security_badges.map(badge =>
+        badge.id === badgeId ? { ...badge, enabled } : badge
+      )
+    }));
   };
 
   return (
@@ -162,8 +189,97 @@ const AdminSettings: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Age Groups Manager - New Component */}
+        {/* Age Groups Manager */}
         <AgeGroupsManager />
+
+        {/* 🆕 Footer Payment Settings */}
+        <Card className="border-[var(--border)] bg-[var(--bg-card)] lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-[var(--fg)]">
+              <CreditCard className="h-5 w-5 text-[var(--color-primary)]" />
+              Footer Ödeme Güvenlik Ayarları
+            </CardTitle>
+            <CardDescription>Footer'da görünen ödeme güvenlik mesajı ve badge'leri</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Security Message */}
+            <div className="space-y-2">
+              <Label>Güvenlik Mesajı</Label>
+              <Textarea
+                placeholder="Ödeme bilgileriniz 256-bit SSL sertifikası ile şifrelenir..."
+                value={generalSettings.footer_payment_message}
+                onChange={(e) => setGeneralSettings({ ...generalSettings, footer_payment_message: e.target.value })}
+                className="bg-[var(--bg-input)] border-[var(--border)]"
+                rows={3}
+              />
+              <p className="text-xs text-[var(--fg-muted)]">
+                Footer'da görünen güvenlik mesajı
+              </p>
+            </div>
+
+            {/* Payment Badge URL */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <ImageIcon className="h-4 w-4" />
+                Ödeme Badge URL
+              </Label>
+              <Input
+                placeholder="https://example.com/payment-badge.png"
+                value={generalSettings.footer_payment_badge_url}
+                onChange={(e) => setGeneralSettings({ ...generalSettings, footer_payment_badge_url: e.target.value })}
+                className="bg-[var(--bg-input)] border-[var(--border)]"
+              />
+              <p className="text-xs text-[var(--fg-muted)]">
+                İyzico veya başka ödeme sağlayıcı badge'i URL'si
+              </p>
+              {/* Preview */}
+              {generalSettings.footer_payment_badge_url && (
+                <div className="mt-3 p-4 rounded-lg border border-[var(--border)] bg-[var(--bg)]">
+                  <p className="text-xs text-[var(--fg-muted)] mb-2">Önizleme:</p>
+                  <img 
+                    src={generalSettings.footer_payment_badge_url} 
+                    alt="Payment Badge Preview" 
+                    className="h-12 object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Security Badges */}
+            <div className="space-y-4">
+              <Label className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4" />
+                Güvenlik Badge'leri
+              </Label>
+              <div className="grid md:grid-cols-3 gap-4">
+                {generalSettings.footer_security_badges.map((badge) => (
+                  <div 
+                    key={badge.id}
+                    className="flex items-center justify-between p-4 rounded-lg border border-[var(--border)] bg-[var(--bg)]"
+                  >
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">{badge.label}</Label>
+                      <p className="text-xs text-[var(--fg-muted)]">
+                        {badge.id === 'ssl' && 'SSL Güvenliği'}
+                        {badge.id === '3d_secure' && '3D Secure'}
+                        {badge.id === 'pci_dss' && 'PCI DSS'}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={badge.enabled}
+                      onCheckedChange={(checked) => handleSecurityBadgeToggle(badge.id, checked)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* SMTP Settings */}
         <Card className="border-[var(--border)] bg-[var(--bg-card)] lg:col-span-2">

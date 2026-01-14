@@ -25,10 +25,17 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   db: {
     schema: 'public',
   },
-  // Global fetch hatası yakalama (opsiyonel debug için)
   global: {
     headers: { 'x-application-name': 'gonca-yoldas-blog' },
-  }
+    // ✅ REMOVED: Fetch wrapper that was removing AbortController signal
+    // This was causing "signal is aborted without reason" errors during uploads
+  },
+  // 🆕 REALTIME OPTIONS - Gereksiz bağlantıları önle
+  realtime: {
+    params: {
+      eventsPerSecond: 2,
+    },
+  },
 });
 
 // Bağlantı testi fonksiyonu

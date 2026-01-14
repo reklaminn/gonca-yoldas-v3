@@ -1,6 +1,12 @@
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
 
+export interface SecurityBadge {
+  id: string;
+  label: string;
+  enabled: boolean;
+}
+
 export interface GeneralSettings {
   id: string;
   site_name: string;
@@ -8,8 +14,8 @@ export interface GeneralSettings {
   site_description: string;
   contact_email: string;
   support_email: string;
-  address: string; // Yeni eklenen alan
-  phone: string;   // Yeni eklenen alan
+  address: string;
+  phone: string;
   timezone: string;
   language: string;
   maintenance_mode_active: boolean;
@@ -17,6 +23,9 @@ export interface GeneralSettings {
   invoice_enabled: boolean;
   show_prices_with_vat: boolean;
   courses_external_url: string;
+  footer_payment_message: string;
+  footer_payment_badge_url: string;
+  footer_security_badges: SecurityBadge[];
   created_at: string;
   updated_at: string;
 }
@@ -26,8 +35,8 @@ export interface GeneralSettings {
  */
 export async function getGeneralSettings(): Promise<GeneralSettings | null> {
   try {
-    // console.log('🔵 [GeneralSettings] Fetching general settings with direct fetch...');
-
+    console.log('🔵 [GeneralSettings] Fetching settings...');
+    
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -50,10 +59,21 @@ export async function getGeneralSettings(): Promise<GeneralSettings | null> {
     }
 
     const data = await response.json();
+    
+    // Parse security_badges if it's a string
+    if (data && typeof data.footer_security_badges === 'string') {
+      data.footer_security_badges = JSON.parse(data.footer_security_badges);
+    }
+    
+    console.log('✅ [GeneralSettings] Settings loaded:', {
+      site_name: data?.site_name,
+      courses_url: data?.courses_external_url,
+      has_payment_badge: !!data?.footer_payment_badge_url,
+    });
+    
     return data;
   } catch (error: any) {
     console.error('❌ [GeneralSettings] Failed to fetch general settings:', error);
-    // toast.error('Genel ayarlar yüklenemedi'); // Kullanıcıyı her sayfada rahatsız etmemek için kapattım
     return null;
   }
 }
@@ -96,6 +116,7 @@ export async function updateGeneralSettings(
       return false;
     }
 
+    console.log('✅ [GeneralSettings] Settings updated successfully');
     toast.success('Genel ayarlar güncellendi');
     return true;
   } catch (error: any) {
@@ -105,7 +126,7 @@ export async function updateGeneralSettings(
   }
 }
 
-// Helper functions remain the same
+// Helper functions
 export async function isCouponEnabled(): Promise<boolean> {
   try {
     const settings = await getGeneralSettings();
@@ -130,5 +151,18 @@ export async function shouldShowPricesWithVAT(): Promise<boolean> {
     return settings?.show_prices_with_vat ?? true;
   } catch (error: any) {
     return true;
+  }
+}
+
+/**
+ * 🆕 Get courses external URL
+ */
+export async function getCoursesExternalUrl(): Promise<string> {
+  try {
+    const settings = await getGeneralSettings();
+    return settings?.courses_external_url || '';
+  } catch (error: any) {
+    console.error('❌ [GeneralSettings] Failed to get courses URL:', error);
+    return '';
   }
 }

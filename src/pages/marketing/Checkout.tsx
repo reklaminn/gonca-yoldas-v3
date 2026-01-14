@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import SEO from '@/components/SEO';
 import { createOrder } from '@/services/orders';
 import { getActivePaymentMethods, type PaymentMethod, type BankTransferConfig } from '@/services/paymentSettings';
-import { isInvoiceEnabled, shouldShowPricesWithVAT } from '@/services/generalSettings';
+import { isInvoiceEnabled, shouldShowPricesWithVAT, getGeneralSettings, type GeneralSettings } from '@/services/generalSettings';
 import { sendPurchaseEvent, formatOrderForSendPulse } from '@/services/sendpulse';
 import type { Program } from '@/hooks/usePrograms';
 import { supabase } from '@/lib/supabaseClient';
@@ -29,10 +29,16 @@ const validateTC = (tc: string) => /^[1-9][0-9]{10}$/.test(tc);
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+// 🆕 ABORT-SAFE FETCH
+const fetchWithoutAbort = async (url: string, options: RequestInit = {}) => {
+  const { signal, ...restOptions } = options;
+  return fetch(url, restOptions);
+};
+
 // Hızlı ve güvenilir REST fetch
 const fetchProgramDirect = async (slug: string): Promise<Program | null> => {
   try {
-    const response = await fetch(
+    const response = await fetchWithoutAbort(
       `${SUPABASE_URL}/rest/v1/programs?slug=eq.${slug}&status=eq.active&select=*`,
       {
         headers: {
@@ -46,7 +52,6 @@ const fetchProgramDirect = async (slug: string): Promise<Program | null> => {
     if (!response.ok) return null;
     const data = await response.json();
     
-    // Metadata parse
     if (data && typeof data.metadata === 'string') {
       data.metadata = JSON.parse(data.metadata);
     }
@@ -65,15 +70,23 @@ const Checkout: React.FC = () => {
   const dateParam = searchParams.get('date');
   const upsellIdsParam = searchParams.get('upsell_ids');
 
+  // Data States
   const [program, setProgram] = useState<Program | null>(null);
   const [selectedUpsells, setSelectedUpsells] = useState<any[]>([]);
   const [selectedDateInfo, setSelectedDateInfo] = useState<any>(null);
-  
-  const [isLoading, setIsLoading] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false); // 🆕 Admin kontrolü
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [settings, setSettings] = useState<GeneralSettings | null>(null);
+  
+  // UI States
+  const [isLoading, setIsLoading] = useState(true); // Sadece Program verisi için
+  const [isAuthChecking, setIsAuthChecking] = useState(true); // Kullanıcı verisi için
+  const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Auth States
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  
+  // Settings States
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('credit_card');
   const [invoiceSystemEnabled, setInvoiceSystemEnabled] = useState(true);
   const [showPricesWithVAT, setShowPricesWithVAT] = useState(true);
@@ -120,104 +133,134 @@ const Checkout: React.FC = () => {
     calcTotal = baseTotal + calcTaxAmount;
   }
 
+  // 1. AŞAMA: Program ve Temel Ayarları Yükle (Kritik)
   useEffect(() => {
-    const init = async () => {
-      try {
-        // 1. Auth & Role Check
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session?.user) {
-          setIsAuthenticated(true);
-          
-          // 🔍 Profil çek ve admin kontrolü yap
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
+    let isMounted = true;
 
-          // 🆕 Admin kontrolü
-          if (profile?.role === 'admin') {
-            setIsAdmin(true);
-            console.log('✅ [Checkout] Admin kullanıcı tespit edildi, profil doldurma atlanıyor');
-            
-            // Admin için sadece email'i doldur
-            setFormData(prev => ({
-              ...prev,
-              email: session.user.email || prev.email
-            }));
-          } else {
-            // 👤 Normal kullanıcı için profil bilgilerini doldur
-            setFormData(prev => ({
-              ...prev,
-              email: session.user.email || prev.email,
-              fullName: profile?.full_name || prev.fullName,
-              phone: profile?.phone || prev.phone,
-              city: profile?.city || prev.city,
-              district: profile?.district || prev.district,
-              billingAddress: profile?.full_address || prev.billingAddress,
-              taxOffice: profile?.tax_office || prev.taxOffice,
-              taxNumber: profile?.tax_number || prev.taxNumber,
-              tcNo: profile?.tc_number || prev.tcNo,
-              customerType: (profile?.billing_type as 'individual' | 'corporate') || 'individual'
-            }));
-          }
+    const loadCriticalData = async () => {
+      try {
+        console.log('🔄 [Checkout] Kritik veri yükleniyor...');
+        
+        if (!programSlug) {
+          if (isMounted) navigate('/programs');
+          return;
         }
 
-        if (!programSlug) {
+        const [prog, methods, inv, vat, generalSettings] = await Promise.all([
+          fetchProgramDirect(programSlug),
+          getActivePaymentMethods(),
+          isInvoiceEnabled(),
+          shouldShowPricesWithVAT(),
+          getGeneralSettings()
+        ]);
+
+        if (!isMounted) return;
+
+        if (!prog) {
+          toast.error('Program bulunamadı');
           navigate('/programs');
           return;
         }
 
-        // 2. Program Fetch (Direkt REST)
-        const prog = await fetchProgramDirect(programSlug);
-        if (!prog) throw new Error('Program not found');
-        
         setProgram(prog);
+        setPaymentMethods(methods);
+        if (methods.length > 0) setSelectedPaymentMethod(methods[0].payment_method);
+        setInvoiceSystemEnabled(inv);
+        setShowPricesWithVAT(vat);
+        setSettings(generalSettings);
 
-        // 3. Upsells
+        // Upsell ve Tarih İşleme
         if (upsellIdsParam && prog.metadata?.upsells) {
           const ids = upsellIdsParam.split(',');
-          const foundUpsells = prog.metadata.upsells.filter((u: any) => 
-            ids.includes(String(u.id))
-          );
+          const foundUpsells = prog.metadata.upsells.filter((u: any) => ids.includes(String(u.id)));
           setSelectedUpsells(foundUpsells);
         }
 
-        // 4. Date
         if (dateParam && prog.metadata?.program_dates) {
           const foundDate = prog.metadata.program_dates.find((d: any) => String(d.id) === String(dateParam));
           if (foundDate) setSelectedDateInfo(foundDate);
         }
 
-        // 5. Settings
-        const methods = await getActivePaymentMethods();
-        setPaymentMethods(methods);
-        if (methods.length > 0) setSelectedPaymentMethod(methods[0].payment_method);
-
-        const [inv, vat] = await Promise.all([isInvoiceEnabled(), shouldShowPricesWithVAT()]);
-        setInvoiceSystemEnabled(inv);
-        setShowPricesWithVAT(vat);
-
       } catch (err) {
-        console.error('Checkout init error:', err);
-        toast.error('Veriler yüklenirken bir hata oluştu.');
+        console.error('❌ [Checkout] Kritik veri hatası:', err);
+        if (isMounted) toast.error('Sayfa yüklenirken hata oluştu.');
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false); // Sayfayı göster
+          loadUserData(); // 2. Aşamayı başlat
+        }
       }
     };
-    init();
+
+    // 2. AŞAMA: Kullanıcı Verilerini Yükle (Non-blocking)
+    const loadUserData = async () => {
+      if (!isMounted) return;
+      
+      try {
+        console.log('👤 [Checkout] Kullanıcı verisi kontrol ediliyor...');
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (isMounted && session?.user) {
+          setIsAuthenticated(true);
+          
+          // Profil verisini çek (Timeout ekleyerek takılmayı önle)
+          const profilePromise = supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+            
+          // 5 saniye timeout
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Profile fetch timeout')), 5000)
+          );
+
+          try {
+            const { data: profile } = await Promise.race([profilePromise, timeoutPromise]) as any;
+
+            if (isMounted && profile) {
+              if (profile.role === 'admin') {
+                setIsAdmin(true);
+                console.log('✅ [Checkout] Admin tespit edildi - Form boş bırakılıyor');
+                // Admin için sadece KVKK onayı
+                setFormData(prev => ({ ...prev, kvkkConsent: true }));
+              } else {
+                console.log('✅ [Checkout] Kullanıcı verileri dolduruluyor');
+                setFormData(prev => ({
+                  ...prev,
+                  email: session.user.email || prev.email,
+                  fullName: profile.full_name || prev.fullName,
+                  phone: profile.phone || prev.phone,
+                  city: profile.city || prev.city,
+                  district: profile.district || prev.district,
+                  billingAddress: profile.full_address || prev.billingAddress,
+                  taxOffice: profile.tax_office || prev.taxOffice,
+                  taxNumber: profile.tax_number || prev.taxNumber,
+                  tcNo: profile.tc_number || prev.tcNo,
+                  customerType: (profile.billing_type as 'individual' | 'corporate') || 'individual'
+                }));
+              }
+            }
+          } catch (profileErr) {
+            console.warn('⚠️ [Checkout] Profil yüklenemedi veya zaman aşımı:', profileErr);
+            // Profil yüklenemese bile authenticated sayabiliriz, form boş kalır
+          }
+        }
+      } catch (authErr) {
+        console.warn('⚠️ [Checkout] Auth check warning:', authErr);
+      } finally {
+        if (isMounted) setIsAuthChecking(false);
+      }
+    };
+
+    loadCriticalData();
+
+    return () => {
+      isMounted = false;
+    };
   }, [programSlug, navigate, upsellIdsParam, dateParam]);
 
   const validateField = (field: string, value: any): string => {
-    // 🆕 Admin için validasyon atla
-    if (isAdmin) {
-      if (field === 'email') return !validateEmail(value) ? 'Geçerli bir e-posta girin' : '';
-      if (field === 'kvkkConsent') return !value ? 'Onay gereklidir' : '';
-      return ''; // Diğer alanlar admin için zorunlu değil
-    }
-
-    // Normal kullanıcı validasyonları
     switch (field) {
       case 'fullName': return !value.trim() ? 'Ad Soyad gereklidir' : '';
       case 'email': return !validateEmail(value) ? 'Geçerli bir e-posta girin' : '';
@@ -325,12 +368,12 @@ const Checkout: React.FC = () => {
           upsells: selectedUpsells,
           selectedDate: selectedDateInfo,
           description: orderDescription,
-          customFields: formData.customFields
+          customFields: formData.customFields,
+          createdByAdmin: isAdmin // Admin tarafından oluşturulduğunu işaretle
         }
       });
 
       if (orderId) {
-        // --- SENDPULSE ID HAZIRLIĞI ---
         const selectedUpsellSendPulseIds = selectedUpsells
           .map(u => u.sendpulse_course_id)
           .filter(Boolean)
@@ -401,14 +444,14 @@ const Checkout: React.FC = () => {
             </div>
             <h1 className="text-3xl font-bold">Siparişi Tamamla</h1>
             
-            {/* 🆕 Admin Uyarısı */}
+            {/* Admin Banner */}
             {isAdmin && (
               <div className="mt-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-3">
                 <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold text-amber-600 dark:text-amber-400">Admin Görünümü</p>
+                  <p className="font-semibold text-amber-600 dark:text-amber-400">Admin Sipariş Modu</p>
                   <p className="text-sm text-amber-600/80 dark:text-amber-400/80">
-                    Admin olarak checkout sayfasını görüntülüyorsunuz. Test siparişi oluşturabilirsiniz.
+                    Şu an Admin olarak işlem yapıyorsunuz. Müşteri bilgilerini manuel olarak girerek onlar adına sipariş oluşturabilirsiniz.
                   </p>
                 </div>
               </div>
@@ -420,7 +463,17 @@ const Checkout: React.FC = () => {
               <form id="checkout-form" onSubmit={handleSubmit} className="space-y-6">
                 
                 {/* 1. Kişisel Bilgiler */}
-                <Card className="card bg-[var(--surface-1)] border-[var(--border)]">
+                <Card className="card bg-[var(--surface-1)] border-[var(--border)] relative">
+                  {/* Form Loading Overlay */}
+                  {isAuthChecking && (
+                    <div className="absolute inset-0 bg-[var(--surface-1)]/50 backdrop-blur-[1px] z-10 flex items-center justify-center rounded-xl">
+                      <div className="flex items-center gap-2 px-4 py-2 bg-[var(--surface-2)] rounded-full shadow-lg border border-[var(--border)]">
+                        <Loader2 className="h-4 w-4 animate-spin text-[var(--color-primary)]" />
+                        <span className="text-xs font-medium">Kullanıcı bilgileri kontrol ediliyor...</span>
+                      </div>
+                    </div>
+                  )}
+                  
                   <CardHeader className="pb-4">
                     <CardTitle className="flex items-center gap-2 text-xl">
                       <div className="w-8 h-8 rounded-lg bg-[var(--color-primary-alpha)] flex items-center justify-center text-[var(--color-primary)] text-sm">1</div>
@@ -430,7 +483,7 @@ const Checkout: React.FC = () => {
                   <CardContent className="space-y-4">
                     <div className="grid md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Ad Soyad {!isAdmin && '*'}</Label>
+                        <Label>Ad Soyad *</Label>
                         <Input 
                           placeholder="John Doe"
                           value={formData.fullName} 
@@ -446,12 +499,17 @@ const Checkout: React.FC = () => {
                           placeholder="ornek@mail.com"
                           value={formData.email} 
                           onChange={e => handleInputChange('email', e.target.value)} 
-                          disabled={isAuthenticated}
+                          // Admin ise disabled DEĞİL, normal kullanıcı ise disabled
+                          disabled={isAuthenticated && !isAdmin}
+                          className={isAuthenticated && !isAdmin ? 'opacity-70' : ''}
                         />
+                        {isAuthenticated && !isAdmin && (
+                          <p className="text-xs text-[var(--fg-muted)]">Giriş yaptığınız e-posta adresi kullanılır.</p>
+                        )}
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label>Telefon {!isAdmin && '*'}</Label>
+                      <Label>Telefon *</Label>
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--fg-muted)] text-sm">+90</span>
                         <Input 
@@ -465,7 +523,7 @@ const Checkout: React.FC = () => {
                   </CardContent>
                 </Card>
 
-                {/* CUSTOM FIELDS (Özel Alanlar) */}
+                {/* CUSTOM FIELDS */}
                 {customFields.length > 0 && (
                   <Card className="card bg-[var(--surface-1)] border-[var(--border)]">
                     <CardHeader className="pb-4">
@@ -481,7 +539,7 @@ const Checkout: React.FC = () => {
                         <div key={field.key} className="space-y-2">
                           <Label>
                             {field.label}
-                            {field.required && !isAdmin && <span className="text-red-500 ml-1">*</span>}
+                            {field.required && <span className="text-red-500 ml-1">*</span>}
                           </Label>
                           
                           {field.type === 'text' && (
@@ -489,7 +547,7 @@ const Checkout: React.FC = () => {
                               placeholder={field.placeholder || ''}
                               value={formData.customFields[field.key] || ''}
                               onChange={e => handleCustomFieldChange(field.key, e.target.value)}
-                              required={field.required && !isAdmin}
+                              required={field.required}
                             />
                           )}
                           
@@ -498,7 +556,7 @@ const Checkout: React.FC = () => {
                               placeholder={field.placeholder || ''}
                               value={formData.customFields[field.key] || ''}
                               onChange={e => handleCustomFieldChange(field.key, e.target.value)}
-                              required={field.required && !isAdmin}
+                              required={field.required}
                               rows={3}
                             />
                           )}
@@ -508,7 +566,7 @@ const Checkout: React.FC = () => {
                               className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] text-[var(--fg)]"
                               value={formData.customFields[field.key] || ''}
                               onChange={e => handleCustomFieldChange(field.key, e.target.value)}
-                              required={field.required && !isAdmin}
+                              required={field.required}
                             >
                               <option value="">Seçiniz...</option>
                               {field.options?.map((opt: string) => (
@@ -561,11 +619,11 @@ const Checkout: React.FC = () => {
 
                       <div className="grid md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>İl {!isAdmin && '*'}</Label>
+                          <Label>İl *</Label>
                           <Input placeholder="Örn: İstanbul" value={formData.city} onChange={e => handleInputChange('city', e.target.value)} />
                         </div>
                         <div className="space-y-2">
-                          <Label>İlçe {!isAdmin && '*'}</Label>
+                          <Label>İlçe *</Label>
                           <Input placeholder="Örn: Kadıköy" value={formData.district} onChange={e => handleInputChange('district', e.target.value)} />
                         </div>
                       </div>
@@ -579,7 +637,7 @@ const Checkout: React.FC = () => {
                             exit={{ opacity: 0, height: 0 }}
                             className="space-y-2"
                           >
-                            <Label>TC Kimlik Numarası {!isAdmin && '*'}</Label>
+                            <Label>TC Kimlik Numarası *</Label>
                             <Input 
                               maxLength={11}
                               placeholder="11 haneli TC No"
@@ -597,16 +655,16 @@ const Checkout: React.FC = () => {
                           >
                             <div className="grid md:grid-cols-2 gap-4">
                               <div className="space-y-2">
-                                <Label>Vergi Dairesi {!isAdmin && '*'}</Label>
+                                <Label>Vergi Dairesi *</Label>
                                 <Input placeholder="Beşiktaş V.D." value={formData.taxOffice} onChange={e => handleInputChange('taxOffice', e.target.value)} />
                               </div>
                               <div className="space-y-2">
-                                <Label>Vergi Numarası {!isAdmin && '*'}</Label>
+                                <Label>Vergi Numarası *</Label>
                                 <Input placeholder="10 haneli" value={formData.taxNumber} onChange={e => handleInputChange('taxNumber', e.target.value.replace(/\D/g, ''))} />
                               </div>
                             </div>
                             <div className="space-y-2">
-                              <Label>Fatura Adresi {!isAdmin && '*'}</Label>
+                              <Label>Fatura Adresi *</Label>
                               <Textarea placeholder="Şirket tam adresi..." value={formData.billingAddress} onChange={e => handleInputChange('billingAddress', e.target.value)} />
                             </div>
                           </motion.div>

@@ -40,20 +40,33 @@ export const useAuthStore = create<AuthState>()(
       profile: null,
       session: null,
       loading: true,
-      setUser: (user) => set({ user }),
-      setProfile: (profile) => set({ profile }),
-      setSession: (session) => set({ session }),
-      setLoading: (loading) => set({ loading }),
+      setUser: (user) => {
+        console.log('🔵 [AuthStore] setUser called:', user?.id);
+        set({ user });
+      },
+      setProfile: (profile) => {
+        console.log('🔵 [AuthStore] setProfile called:', profile?.id, profile?.role);
+        set({ profile });
+      },
+      setSession: (session) => {
+        console.log('🔵 [AuthStore] setSession called:', session?.user?.id);
+        set({ session });
+      },
+      setLoading: (loading) => {
+        console.log('🔵 [AuthStore] setLoading called:', loading);
+        set({ loading });
+      },
       reset: () => {
-
+        console.log('🔵 [AuthStore] reset called - clearing all auth data');
         set({ user: null, profile: null, session: null, loading: false });
         
         // LocalStorage temizliği (Sadece auth ile ilgili olanlar)
         try {
           localStorage.removeItem('auth-storage');
           localStorage.removeItem('sb-jlwsapdvizzriomadhxj-auth-token');
+          console.log('✅ [AuthStore] Local storage cleaned');
         } catch (e) {
-          console.error('LocalStorage temizlenirken hata:', e);
+          console.error('❌ [AuthStore] Local storage cleanup error:', e);
         }
       },
     }),

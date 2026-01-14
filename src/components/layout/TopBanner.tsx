@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ChevronLeft, ChevronRight, Facebook, Instagram, Youtube } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePageContent } from '@/hooks/usePageContent';
 
@@ -7,13 +7,6 @@ const TopBanner: React.FC = () => {
   const [isDismissed, setIsDismissed] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const { content, loading } = usePageContent('global');
-
-  // Social Media Links
-  const socialLinks = [
-    { icon: Facebook, href: 'https://www.facebook.com/goncayoldas', label: 'Facebook' },
-    { icon: Instagram, href: 'https://www.instagram.com/goncayoldas', label: 'Instagram' },
-    { icon: Youtube, href: 'https://www.youtube.com/@goncayoldas', label: 'YouTube' },
-  ];
 
   // Parse announcements from JSON
   const announcements = React.useMemo(() => {
@@ -89,26 +82,8 @@ const TopBanner: React.FC = () => {
               </AnimatePresence>
             </div>
 
-            {/* Right Side: Socials & Controls */}
+            {/* Right Side: Controls only (Socials moved to Header) */}
             <div className="flex items-center justify-end gap-3 w-auto min-w-[40px] md:w-1/4">
-              
-              {/* Social Icons (Hidden on mobile to save space) */}
-              <div className="hidden md:flex items-center gap-3 border-r border-white/20 pr-3">
-                {socialLinks.map((social) => (
-                  <a
-                    key={social.label}
-                    href={social.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:text-white/80 transition-colors hover:scale-110 transform duration-200"
-                    aria-label={social.label}
-                  >
-                    <social.icon className="h-4 w-4" />
-                  </a>
-                ))}
-              </div>
-
-              {/* Controls */}
               <div className="flex items-center gap-2">
                 {announcements.length > 1 && (
                   <>
