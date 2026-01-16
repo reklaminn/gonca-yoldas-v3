@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileText, Edit, Home, Users, Mail, Laptop, MessageSquareQuote, Globe, BookOpen } from 'lucide-react';
+import { FileText, Edit, Home, Users, Mail, Laptop, MessageSquareQuote, Globe, BookOpen, Shield, Scale, Cookie, ScrollText } from 'lucide-react';
 
 const pages = [
   {
@@ -61,6 +61,47 @@ const pages = [
     color: 'from-pink-500 to-pink-600',
     path: '/admin/content/testimonials'
   },
+  // Legal Pages
+  {
+    key: 'legal-privacy',
+    title: 'Gizlilik Politikası',
+    description: 'Gizlilik politikası metnini düzenleyin',
+    icon: Shield,
+    color: 'from-slate-500 to-slate-600',
+    path: '/admin/content/legal-privacy'
+  },
+  {
+    key: 'legal-terms',
+    title: 'Kullanım Koşulları',
+    description: 'Kullanım koşulları metnini düzenleyin',
+    icon: FileText,
+    color: 'from-slate-500 to-slate-600',
+    path: '/admin/content/legal-terms'
+  },
+  {
+    key: 'legal-cookies',
+    title: 'Çerez Politikası',
+    description: 'Çerez politikası metnini düzenleyin',
+    icon: Cookie,
+    color: 'from-slate-500 to-slate-600',
+    path: '/admin/content/legal-cookies'
+  },
+  {
+    key: 'legal-kvkk',
+    title: 'KVKK Aydınlatma',
+    description: 'KVKK aydınlatma metnini düzenleyin',
+    icon: Scale,
+    color: 'from-slate-500 to-slate-600',
+    path: '/admin/content/legal-kvkk'
+  },
+  {
+    key: 'legal-distance-sales',
+    title: 'Mesafeli Satış Söz.',
+    description: 'Mesafeli satış sözleşmesi metnini düzenleyin',
+    icon: ScrollText,
+    color: 'from-slate-500 to-slate-600',
+    path: '/admin/content/legal-distance-sales'
+  },
 ];
 
 const ContentManagement: React.FC = () => {
@@ -74,12 +115,12 @@ const ContentManagement: React.FC = () => {
           İçerik Yönetimi
         </h1>
         <p className="text-gray-500 dark:text-gray-400 mt-2">
-          Blog yazılarını, statik sayfa içeriklerini ve duyuruları düzenleyin
+          Blog yazılarını, statik sayfa içeriklerini ve yasal metinleri düzenleyin
         </p>
       </div>
 
       {/* Pages Grid */}
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {pages.map((page) => {
           const Icon = page.icon;
           return (
@@ -95,8 +136,8 @@ const ContentManagement: React.FC = () => {
                       <Icon className="h-6 w-6" />
                     </div>
                     <div>
-                      <CardTitle className="text-xl">{page.title}</CardTitle>
-                      <CardDescription className="mt-1">
+                      <CardTitle className="text-lg">{page.title}</CardTitle>
+                      <CardDescription className="mt-1 text-xs">
                         {page.description}
                       </CardDescription>
                     </div>
@@ -114,24 +155,6 @@ const ContentManagement: React.FC = () => {
           );
         })}
       </div>
-
-      {/* Info Card */}
-      <Card className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
-        <CardHeader>
-          <div className="flex items-start gap-3">
-            <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-            <div>
-              <CardTitle className="text-lg text-blue-900 dark:text-blue-100">
-                İçerik Düzenleme Hakkında
-              </CardTitle>
-              <CardDescription className="text-blue-700 dark:text-blue-300 mt-2">
-                Bu sayfadan tüm site içeriklerini yönetebilirsiniz. Blog yazılarınız anında "Blog" sayfasında listelenir.
-                Öne çıkan yazılar blog sayfasının en üstünde büyük kart olarak görünür.
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
     </div>
   );
 };

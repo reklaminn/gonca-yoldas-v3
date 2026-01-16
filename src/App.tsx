@@ -24,6 +24,7 @@ const Checkout = React.lazy(() => import('./pages/marketing/Checkout'));
 const PaymentSuccess = React.lazy(() => import('./pages/marketing/PaymentSuccess'));
 const PaymentFailure = React.lazy(() => import('./pages/marketing/PaymentFailure'));
 const ThankYou = React.lazy(() => import('./pages/marketing/ThankYou'));
+const Legal = React.lazy(() => import('./pages/marketing/Legal'));
 
 // Auth Pages
 const Login = React.lazy(() => import('./pages/auth/Login'));
@@ -208,6 +209,8 @@ function App() {
               <Route path="/learning-platform" element={<LearningPlatform />} />
               <Route path="/siparis" element={<Checkout />} />
               <Route path="/tesekkurler" element={<ThankYou />} />
+              {/* Legal Pages Route */}
+              <Route path="/legal/:slug" element={<Legal />} />
             </Route>
 
             {/* Payment Routes - Public */}

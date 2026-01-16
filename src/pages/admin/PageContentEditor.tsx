@@ -51,6 +51,11 @@ const PAGE_TITLES: Record<string, string> = {
   'about': 'Hakkımızda',
   'contact': 'İletişim',
   'learning-platform': 'Öğrenme Platformu',
+  'legal-privacy': 'Gizlilik Politikası',
+  'legal-terms': 'Kullanım Koşulları',
+  'legal-cookies': 'Çerez Politikası',
+  'legal-kvkk': 'KVKK Aydınlatma Metni',
+  'legal-distance-sales': 'Mesafeli Satış Sözleşmesi',
 };
 
 const CONTENT_TYPES = [
@@ -386,8 +391,11 @@ const PageContentEditor: React.FC = () => {
   useEffect(() => {
     if (contentItems.length > 0) {
       setItems(contentItems);
+    } else if (!loading && contentItems.length === 0) {
+      // Eğer içerik yoksa boş liste göster, sonsuz döngüye girme
+      setItems([]);
     }
-  }, [contentItems]);
+  }, [contentItems, loading]);
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
@@ -477,7 +485,7 @@ const PageContentEditor: React.FC = () => {
     try {
       setIsCreating(true);
 
-      const maxOrder = Math.max(...items.map(item => item.display_order), 0);
+      const maxOrder = items.length > 0 ? Math.max(...items.map(item => item.display_order), 0) : 0;
 
       await createPageContent({
         page_key: pageKey || '',
@@ -574,29 +582,38 @@ const PageContentEditor: React.FC = () => {
         </CardContent>
       </Card>
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext
-          items={items.map(item => item.id)}
-          strategy={verticalListSortingStrategy}
+      {items.length === 0 ? (
+        <div className="text-center py-12 bg-gray-50 dark:bg-gray-900 rounded-lg border border-dashed">
+          <p className="text-gray-500">Bu sayfa için henüz içerik eklenmemiş.</p>
+          <Button variant="outline" className="mt-4" onClick={() => setIsAddDialogOpen(true)}>
+            İlk İçeriği Ekle
+          </Button>
+        </div>
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
         >
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {items.map((item) => (
-              <SortableSectionCard
-                key={item.id}
-                item={item}
-                onToggle={() => handleToggle(item.id)}
-                onSave={(newValue) => handleSave(item.id, newValue)}
-                saving={savingStates[item.id] || false}
-                saved={savedStates[item.id] || false}
-              />
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
+          <SortableContext
+            items={items.map(item => item.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {items.map((item) => (
+                <SortableSectionCard
+                  key={item.id}
+                  item={item}
+                  onToggle={() => handleToggle(item.id)}
+                  onSave={(newValue) => handleSave(item.id, newValue)}
+                  saving={savingStates[item.id] || false}
+                  saved={savedStates[item.id] || false}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
 
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
@@ -656,6 +673,11 @@ const PageContentEditor: React.FC = () => {
                     }
                   />
                 </div>
+              ) : newSection.content_type === 'rich_text' ? (
+                 <RichTextEditor
+                  value={newSection.content_value}
+                  onChange={(val) => setNewSection(prev => ({ ...prev, content_value: val }))}
+                />
               ) : (
                 <Textarea
                   id="content_value"

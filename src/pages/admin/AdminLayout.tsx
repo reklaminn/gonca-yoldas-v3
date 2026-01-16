@@ -19,6 +19,7 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { signOutUser } from '@/services/auth';
 import { toast } from 'sonner';
+import ThemeToggle from '@/components/theme/ThemeToggle';
 
 const AdminLayout: React.FC = () => {
   const { user, profile, session } = useAuth();
@@ -48,7 +49,7 @@ const AdminLayout: React.FC = () => {
     { name: 'Programlar', href: '/admin/programs', icon: BookOpen },
     { name: 'Siparişler', href: '/admin/orders', icon: ShoppingBag },
     { name: 'İçerik Yönetimi', href: '/admin/content', icon: FileText },
-    { name: 'Ayarlar', href: '/admin/settings', icon: Settings }, // ✅ Settings link
+    { name: 'Ayarlar', href: '/admin/settings', icon: Settings },
   ];
 
   const handleSignOut = async () => {
@@ -86,7 +87,7 @@ const AdminLayout: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-300">
       {/* Mobile Overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
@@ -165,12 +166,15 @@ const AdminLayout: React.FC = () => {
       {/* Main Content */}
       <div className="lg:ml-64">
         {/* Mobile Header */}
-        <header className="lg:hidden bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-3 sticky top-0 z-30 backdrop-blur-sm">
-          <div className="flex items-center justify-between">
+        <header className="lg:hidden bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-3 sticky top-0 z-30 backdrop-blur-sm flex items-center justify-between">
+          <div className="flex items-center gap-3">
             <button onClick={() => setSidebarOpen(true)} className="text-gray-600 dark:text-gray-400">
               <Menu className="h-6 w-6" />
             </button>
             <h1 className="text-lg font-bold text-gray-900 dark:text-white">Admin Panel</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
             <Link to="/">
               <Button variant="ghost" size="sm">
                 <Home className="h-5 w-5" />
@@ -179,8 +183,13 @@ const AdminLayout: React.FC = () => {
           </div>
         </header>
 
+        {/* Desktop Header (Theme Toggle) */}
+        <header className="hidden lg:flex justify-end px-8 py-4">
+          <ThemeToggle />
+        </header>
+
         {/* Page Content */}
-        <main className="p-4 lg:p-8">
+        <main className="p-4 lg:p-8 pt-0 lg:pt-0">
           <Outlet />
         </main>
       </div>
